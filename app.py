@@ -1,63 +1,158 @@
 import streamlit as st
-import matplotlib.pyplot as plt
-from matplotlib.patches import Rectangle
+import streamlit.components.v1 as components
 
-# --- PENGATURAN HALAMAN WEB ---
+# --- PENGATURAN TEMA HALAMAN ---
 st.set_page_config(page_title="Simulasi ESP Downhole", layout="centered")
-st.title("🛢️ Simulasi Interaktif: ESP Downhole")
-st.markdown("Atur frekuensi motor dan kedalaman sumur untuk melihat apakah minyak berhasil dipompa ke permukaan.")
 
-# --- MEMBUAT SLIDER INTERAKTIF (DI SIDEBAR ATAU MAIN PAGE) ---
+st.markdown("<h2 style='text-align: center;'>🛢️ Simulasi Pompa ESP (Downhole)</h2>", unsafe_allow_html=True)
+
+# --- SLIDER INTERAKTIF PYTHON ---
 col1, col2 = st.columns(2)
 with col1:
-    frekuensi_motor = st.slider('Frekuensi Motor Listrik (Hz)', min_value=30.0, max_value=70.0, value=50.0, step=1.0)
+    frekuensi_motor = st.slider('Frekuensi Motor (Hz)', 30, 70, 50)
 with col2:
-    kedalaman_sumur = st.slider('Kedalaman Sumur (meter)', min_value=1000, max_value=3000, value=1500, step=100)
+    kedalaman_sumur = st.slider('Kedalaman Sumur (m)', 1000, 3000, 2000)
 
-# --- LOGIKA FISIKA SEDERHANA ---
-# Head proporsional dengan kuadrat frekuensi
+# --- LOGIKA FISIKA ---
 daya_dorong_maksimal = (frekuensi_motor / 50.0)**2 * 2500  
 
 if kedalaman_sumur > daya_dorong_maksimal:
     laju_produksi = 0
-    status = f"🚨 STALL! Daya Dorong ({daya_dorong_maksimal:.0f}m) < Kedalaman ({kedalaman_sumur}m)"
-    warna_status = 'red'
-    st.error(status)
+    st.error(f"🚨 STALL! Daya Dorong ({daya_dorong_maksimal:.0f}m) kalah dari Kedalaman ({kedalaman_sumur}m)")
 else:
     laju_produksi = (daya_dorong_maksimal - kedalaman_sumur) * 3.5
-    status = f"✅ SISTEM MENGALIR: {laju_produksi:.0f} BPD"
-    warna_status = 'green'
-    st.success(status)
+    st.success(f"✅ SISTEM MENGALIR | Laju Produksi: {laju_produksi:.0f} BPD")
 
-# --- VISUALISASI GRAFIK MATPLOTLIB ---
-fig, ax = plt.subplots(figsize=(5, 7))
+# --- ANIMASI HTML5 CANVAS & JAVASCRIPT ---
+# Kita injeksikan nilai laju_produksi dari Python ke dalam variabel JavaScript
+html_animasi = f"""
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+    body {{
+        background-color: #0e1117; /* Warna gelap khas Streamlit */
+        display: flex;
+        justify-content: center;
+        align-items: center;
+        margin: 0;
+        font-family: sans-serif;
+    }}
+    .sim-container {{
+        position: relative;
+        width: 250px;
+        height: 450px;
+        background-color: #1e1e24;
+        border-radius: 10px;
+        box-shadow: 0 4px 8px rgba(0,0,0,0.5);
+        overflow: hidden;
+    }}
+    canvas {{
+        display: block;
+    }}
+</style>
+</head>
+<body>
 
-# Menggambar casing sumur (pipa luar)
-ax.plot([0, 0], [0, -3500], color='black', linewidth=4)
-ax.plot([1, 1], [0, -3500], color='black', linewidth=4)
+<div class="sim-container">
+    <canvas id="espCanvas" width="250" height="450"></canvas>
+</div>
 
-# Animasi level fluida di dalam pipa
-if laju_produksi > 0:
-    ax.fill_between([0.1, 0.9], 0, -kedalaman_sumur, color='#2c7bb6', alpha=0.7, label='Minyak Naik ke Permukaan')
-else:
-    tinggi_fluida_naik = -kedalaman_sumur + daya_dorong_maksimal
-    ax.fill_between([0.1, 0.9], tinggi_fluida_naik, -kedalaman_sumur, color='#d7191c', alpha=0.7, label='Fluida Terhenti (Stall)')
+<script>
+    const canvas = document.getElementById('espCanvas');
+    const ctx = canvas.getContext('2d');
     
-# Menggambar unit ESP di dasar
-esp_unit = Rectangle((0.15, -kedalaman_sumur - 300), 0.7, 300, color='dimgray', label='Unit ESP')
-ax.add_patch(esp_unit)
+    // Ambil data dari Python
+    let laju = {laju_produksi}; 
+    let frekuensi = {frekuensi_motor};
+    let kedalaman = {kedalaman_sumur};
+    
+    let partikelArray = [];
+    
+    // Kelas Partikel (Titik Biru)
+    class Partikel {{
+        constructor() {{
+            this.x = Math.random() * 80 + 85; // Muncul di tengah pipa
+            this.y = 330; // Mulai dari atas pompa
+            this.radius = Math.random() * 4 + 2;
+            // Kecepatan partikel bergantung pada laju produksi
+            this.speed = (Math.random() * 2 + 1.5) * (laju / 1000); 
+            this.opacity = Math.random() * 0.5 + 0.5;
+        }}
+        
+        update() {{
+            this.y -= this.speed; // Bergerak ke atas
+        }}
+        
+        draw() {{
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+            ctx.fillStyle = `rgba(59, 130, 246, ${{this.opacity}})`; // Warna biru
+            ctx.fill();
+        }}
+    }}
+    
+    function gambarLatar() {{
+        // Gambar Pipa Luar (Casing)
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.moveTo(70, 0); ctx.lineTo(70, 450);
+        ctx.moveTo(180, 0); ctx.lineTo(180, 450);
+        ctx.stroke();
+        
+        // Kotak PUMP
+        ctx.fillStyle = '#475569';
+        ctx.fillRect(72, 340, 106, 40);
+        ctx.fillStyle = 'white';
+        ctx.font = 'bold 12px Arial';
+        ctx.fillText('PUMP', 105, 365);
+        
+        // Kotak MOTOR
+        ctx.fillStyle = '#334155';
+        ctx.fillRect(72, 385, 106, 50);
+        ctx.fillStyle = 'white';
+        ctx.fillText('MOTOR', 103, 415);
+        
+        // Teks Kedalaman
+        ctx.fillStyle = '#94a3b8';
+        ctx.font = '10px Arial';
+        ctx.fillText('0 m (Permukaan)', 160, 20);
+        ctx.fillText(`${{kedalaman}} m (Dasar)`, 160, 430);
+    }}
+    
+    function jalankanAnimasi() {{
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        gambarLatar();
+        
+        // Jika ada laju produksi, buat gelembung baru
+        if (laju > 0) {{
+            // Semakin tinggi laju, semakin banyak partikel yang muncul
+            let intensitas = Math.floor(laju / 500);
+            for(let i=0; i<intensitas; i++) {{
+                if(Math.random() < 0.3) partikelArray.push(new Partikel());
+            }}
+        }}
+        
+        // Update dan gambar semua partikel
+        for (let i = 0; i < partikelArray.length; i++) {{
+            partikelArray[i].update();
+            partikelArray[i].draw();
+        }}
+        
+        // Hapus partikel yang sudah keluar dari atas layar agar memori tidak penuh
+        partikelArray = partikelArray.filter(p => p.y > -20);
+        
+        requestAnimationFrame(jalankanAnimasi);
+    }}
+    
+    jalankanAnimasi();
+</script>
 
-# Pengaturan tampilan
-ax.set_xlim(-1, 2)
-ax.set_ylim(-4000, 500)
-ax.set_ylabel("Kedalaman (meter)")
-ax.set_xticks([]) 
-ax.legend(loc='upper right')
-plt.grid(True, axis='y', linestyle='--', alpha=0.7)
+</body>
+</html>
+"""
 
-# Garis permukaan tanah
-ax.axhline(0, color='green', linewidth=2, linestyle='-')
-ax.text(-0.9, 50, "Permukaan Tanah", color='green', fontweight='bold')
-
-# Menampilkan grafik ke web Streamlit
-st.pyplot(fig)
+# Menampilkan HTML di dalam Streamlit
+components.html(html_animasi, height=470)
