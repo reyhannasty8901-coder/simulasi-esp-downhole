@@ -1,10 +1,8 @@
 import streamlit as st
 import streamlit.components.v1 as components
 
-# --- PENGATURAN HALAMAN STREAMLIT ---
-st.set_page_config(page_title="Simulasi EMSP", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Simulasi EMSP Lanjut", layout="wide", initial_sidebar_state="collapsed")
 
-# Menyembunyikan elemen bawaan Streamlit agar terlihat seperti web mandiri penuh
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
@@ -14,14 +12,12 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# --- KODE INJEKSI HTML5, CSS3, & JAVASCRIPT ---
-# Seluruh logika fisika, slider, UI, dan grafik real-time dibangun di sini
 html_app = """
 <!DOCTYPE html>
 <html lang="id">
 <head>
     <meta charset="UTF-8">
-    <title>EMSP Simulation</title>
+    <title>EMSP Advanced Simulation</title>
     <style>
         :root {
             --bg-color: #0e1117;
@@ -32,509 +28,261 @@ html_app = """
             --aragonite-color: #ff4b4b;
         }
         body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-            margin: 0;
-            padding: 10px 20px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            background-color: var(--bg-color); color: var(--text-main);
+            font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px;
+            display: flex; flex-direction: column; align-items: center;
         }
-        h2 { margin-top: 5px; margin-bottom: 15px; font-weight: 600; letter-spacing: 1px; }
+        h2 { margin: 0 0 10px 0; font-weight: 600; text-align: center; }
         
-        /* Container Utama */
         .main-container {
-            width: 100%;
-            max-width: 1200px;
-            display: grid;
-            grid-template-columns: 1fr 300px;
-            gap: 20px;
+            width: 100%; max-width: 1400px; display: grid; grid-template-columns: 1fr 350px; gap: 15px;
         }
         
-        /* Kanvas Utama */
         .canvas-section {
-            background: var(--panel-bg);
-            border-radius: 12px;
-            padding: 15px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-            display: flex;
-            flex-direction: column;
-            align-items: center;
+            background: var(--panel-bg); border-radius: 12px; padding: 15px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 10px;
         }
         canvas {
-            background: #12141a;
-            border-radius: 8px;
-            box-shadow: inset 0 0 10px rgba(0,0,0,0.8);
-            width: 100%;
-            max-height: 350px;
+            background: #12141a; border-radius: 8px; width: 100%;
         }
         
-        /* Panel Kontrol & Dashboard */
         .control-panel {
-            background: var(--panel-bg);
-            border-radius: 12px;
-            padding: 20px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.4);
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+            background: var(--panel-bg); border-radius: 12px; padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px;
         }
         
-        /* Toggle Switch */
-        .toggle-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            background: #262a35;
-            padding: 10px 15px;
-            border-radius: 8px;
-            border: 1px solid #3a3f50;
-        }
-        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
-        .switch input { opacity: 0; width: 0; height: 0; }
-        .slider-toggle {
-            position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0;
-            background-color: #555; transition: .4s; border-radius: 34px;
-        }
-        .slider-toggle:before {
-            position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px;
-            background-color: white; transition: .4s; border-radius: 50%;
-        }
-        input:checked + .slider-toggle { background-color: var(--accent-cyan); box-shadow: 0 0 10px var(--accent-cyan); }
-        input:checked + .slider-toggle:before { transform: translateX(24px); }
-        
-        /* Sliders */
-        .slider-group { display: flex; flex-direction: column; gap: 5px; }
         .slider-group label { font-size: 0.85rem; color: #a1a1aa; display: flex; justify-content: space-between; }
-        input[type=range] {
-            -webkit-appearance: none; width: 100%; background: transparent; margin: 5px 0;
-        }
-        input[type=range]::-webkit-slider-runnable-track {
-            width: 100%; height: 6px; background: #3f3f46; border-radius: 3px;
-        }
-        input[type=range]::-webkit-slider-thumb {
-            -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%;
-            background: var(--text-main); cursor: pointer; margin-top: -5px;
-        }
+        input[type=range] { width: 100%; margin: 8px 0; }
         
-        /* Parameter Real-Time (Progress Bars) */
-        .param-box { background: #262a35; padding: 15px; border-radius: 8px; }
-        .param-title { font-size: 0.9rem; font-weight: bold; margin-bottom: 10px; border-bottom: 1px solid #3f3f46; padding-bottom: 5px; }
-        .progress-row { margin-bottom: 8px; }
-        .progress-label { font-size: 0.75rem; display: flex; justify-content: space-between; margin-bottom: 3px; }
-        .progress-bar-bg { width: 100%; height: 8px; background: #18181b; border-radius: 4px; overflow: hidden; }
-        .progress-fill { height: 100%; background: #4caf50; width: 50%; transition: width 0.5s ease, background 0.5s ease; }
+        .dashboard-box { background: #262a35; padding: 15px; border-radius: 8px; border-left: 4px solid var(--accent-cyan); }
+        .dash-row { display: flex; justify-content: space-between; margin-bottom: 5px; font-size: 0.9rem; }
+        .dash-val { font-weight: bold; }
         
-        /* Morfologi Box */
-        .morph-box {
-            text-align: center; padding: 10px; margin-top: 10px; border-radius: 8px;
-            border: 2px dashed #555; transition: all 0.5s;
-        }
-        .morph-title { font-size: 0.8rem; color: #a1a1aa; }
-        .morph-value { font-size: 1.2rem; font-weight: bold; margin-top: 5px; }
-        .morph-calcite { color: var(--calcite-color); border-color: var(--calcite-color); }
-        .morph-aragonite { color: var(--aragonite-color); border-color: var(--aragonite-color); }
-        
-        /* Legenda */
-        .legend { display: flex; gap: 15px; margin-top: 10px; font-size: 0.8rem; }
+        .legend { display: flex; justify-content: center; gap: 15px; font-size: 0.8rem; padding: 10px; background: #262a35; border-radius: 8px;}
         .legend-item { display: flex; align-items: center; gap: 5px; }
-        .dot { width: 10px; height: 10px; border-radius: 50%; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
         
-        /* Grafik Mini */
-        .chart-container { margin-top: 15px; height: 100px; width: 100%; background: #12141a; border-radius: 8px; }
-        
-        /* Footer Edukasi */
-        .footer-note {
-            margin-top: 20px; font-size: 0.75rem; color: #71717a; text-align: center; max-width: 900px; line-height: 1.4;
-        }
+        .footer-note { margin-top: 15px; font-size: 0.75rem; color: #71717a; text-align: center; line-height: 1.4; }
     </style>
 </head>
 <body>
 
-    <h2>Simulasi Electromagnetic Scale Preventer</h2>
+    <h2>Analisis Komparatif: Pembentukan Kerak & EMSP</h2>
     
     <div class="main-container">
         <div class="canvas-section">
-            <canvas id="simCanvas" width="850" height="300"></canvas>
+            <canvas id="simCanvas" width="900" height="420"></canvas>
             
             <div class="legend">
                 <div class="legend-item"><div class="dot" style="background:#3b82f6;"></div> Ion Ca²⁺</div>
                 <div class="legend-item"><div class="dot" style="background:#10b981;"></div> Ion CO₃²⁻</div>
-                <div class="legend-item"><div class="dot" style="background:var(--calcite-color); border-radius:0;"></div> Scale Calcite</div>
-                <div class="legend-item"><div class="dot" style="background:var(--aragonite-color); border-radius:50%;"></div> Aragonite Suspensi</div>
+                <div class="legend-item"><div class="dot" style="background:var(--calcite-color); border-radius:2px;"></div> Calcite (Kerak)</div>
+                <div class="legend-item"><div class="dot" style="background:var(--aragonite-color); border-radius:50%;"></div> Aragonite (Suspended/Tersuspensi)</div>
             </div>
             
-            <div class="chart-container">
-                <canvas id="chartCanvas" width="850" height="100"></canvas>
-            </div>
+            <canvas id="chartCanvas" width="900" height="150"></canvas>
         </div>
         
         <div class="control-panel">
-            <div class="toggle-container">
-                <span style="font-weight:bold; font-size:0.9rem;">Medan EMSP</span>
-                <label class="switch">
-                    <input type="checkbox" id="emspToggle">
-                    <span class="slider-toggle"></span>
-                </label>
-            </div>
+            <h4 style="margin:0; border-bottom:1px solid #444; padding-bottom:10px;">Parameter Sistem</h4>
             
             <div class="slider-group">
                 <label>Mineral Saturation <span id="valSat">50%</span></label>
                 <input type="range" id="satSlider" min="10" max="100" value="50">
                 
-                <label>Flow Velocity <span id="valFlow">Normal</span></label>
+                <label>Flow Velocity <span id="valFlow">2.5 m/s</span></label>
                 <input type="range" id="flowSlider" min="1" max="5" value="2.5" step="0.1">
             </div>
             
-            <div class="param-box">
-                <div class="param-title">Real-Time Parameters</div>
-                <div class="progress-row">
-                    <div class="progress-label"><span>Nucleation Rate</span><span id="txtNuc">Rendah</span></div>
-                    <div class="progress-bar-bg"><div id="barNuc" class="progress-fill"></div></div>
-                </div>
-                <div class="progress-row">
-                    <div class="progress-label"><span>Crystal Growth</span><span id="txtGro">Tinggi</span></div>
-                    <div class="progress-bar-bg"><div id="barGro" class="progress-fill"></div></div>
-                </div>
-                <div class="progress-row">
-                    <div class="progress-label"><span>Adhesion (Risk)</span><span id="txtAdh">Tinggi</span></div>
-                    <div class="progress-bar-bg"><div id="barAdh" class="progress-fill"></div></div>
-                </div>
+            <div class="dashboard-box">
+                <div class="dash-row"><span>Supersaturation:</span> <span class="dash-val" id="lblSuper">Medium</span></div>
+                <div class="dash-row"><span>Scale Risk:</span> <span class="dash-val" id="lblRisk" style="color:#ff4b4b;">Kritis</span></div>
             </div>
             
-            <div id="morphBox" class="morph-box morph-calcite">
-                <div class="morph-title">Morfologi Dominan</div>
-                <div class="morph-value" id="morphValue">Calcite (Melekat)</div>
+            <div class="dashboard-box" style="border-left-color: #8892b0;">
+                <h5 style="margin:0 0 10px 0; color:#a1a1aa;">Sistem Konvensional (OFF)</h5>
+                <div class="dash-row"><span>Morfologi:</span> <span class="dash-val">Calcite</span></div>
+                <div class="dash-row"><span>Deposit:</span> <span class="dash-val" id="valDepOff">0 mm</span></div>
             </div>
             
-            <button id="btnReset" style="background:#3f3f46; color:white; border:none; padding:8px; border-radius:5px; cursor:pointer; margin-top:5px;">Reset Pipa</button>
+            <div class="dashboard-box" style="border-left-color: var(--accent-cyan);">
+                <h5 style="margin:0 0 10px 0; color:#a1a1aa;">Sistem EMSP (ON)</h5>
+                <div class="dash-row"><span>Morfologi:</span> <span class="dash-val">Aragonite</span></div>
+                <div class="dash-row"><span>Deposit:</span> <span class="dash-val" id="valDepOn">0 mm</span></div>
+            </div>
+            
+            <button id="btnReset" style="background:#3f3f46; color:white; border:none; padding:10px; border-radius:5px; cursor:pointer; font-weight:bold;">Reset Pipa & Grafik</button>
         </div>
     </div>
     
     <div class="footer-note">
-        <b>Catatan Ilmiah:</b> Simulasi ini merupakan ilustrasi konseptual berdasarkan mekanisme yang diusulkan dalam literatur. Electromagnetic Scale Preventer tidak menghilangkan ion penyusun kerak, melainkan memanipulasi medan elektromagnetik untuk mempercepat nukleasi dini. Hasilnya adalah formasi kristal Aragonite (bukan Calcite) yang berukuran mikroskopis, stabil melayang dalam fluida (suspended solids), dan kehilangan daya adhesi kimia untuk menempel pada dinding pipa baja.
+        <b>Catatan Ilmiah:</b> Simulasi ini membandingkan mekanisme kristalisasi secara *real-time*. Pada sistem tanpa alat (Atas), tabrakan ion di kondisi supersaturasi memicu pembentukan Calcite yang agresif tumbuh dan melekat di dinding pipa. Saat EMSP aktif (Bawah), medan elektromagnetik menginduksi laju nukleasi masif, memaksa ion membentuk kristal Aragonite mikroskopis yang kehilangan daya adhesi dan tetap berada dalam fase suspensi (*suspended solids*), sehingga mencegah terbentuknya lapisan *scale*.
     </div>
 
 <script>
-    // Konfigurasi Canvas
     const canvas = document.getElementById('simCanvas');
     const ctx = canvas.getContext('2d');
     const chartCanvas = document.getElementById('chartCanvas');
     const cCtx = chartCanvas.getContext('2d');
     
-    // Elemen UI
-    const toggle = document.getElementById('emspToggle');
     const satSlider = document.getElementById('satSlider');
     const flowSlider = document.getElementById('flowSlider');
     
-    // Dimensi Pipa
-    const pipeY = 50;
-    const pipeHeight = 200;
-    const pipeBottom = pipeY + pipeHeight;
-    const coilX = 350;
-    const coilWidth = 150;
+    // Konfigurasi Pipa (Atas = OFF, Bawah = ON)
+    const p1Y = 30, p1H = 150, p1Bottom = p1Y + p1H;
+    const p2Y = 240, p2H = 150, p2Bottom = p2Y + p2H;
+    const coilX = 350, coilW = 150;
     
-    // State Variabel
-    let isEMSP = false;
-    let particles = [];
-    let crystals = [];
-    let scaleThickness = new Array(850).fill(0);
+    let sysOff = { ions: [], crystals: [], scale: new Array(900).fill(0) };
+    let sysOn = { ions: [], crystals: [], scale: new Array(900).fill(0) };
     
-    // Chart Data
-    let time = 0;
-    let chartDataScale = [];
-    let chartDataCrystals = [];
+    let chartDepOff = [], chartDepOn = [], chartAragOn = [];
     
-    // Kelas Partikel Ion
     class Ion {
-        constructor() {
-            this.x = Math.random() * 50; // Muncul di kiri
-            this.y = pipeY + 10 + Math.random() * (pipeHeight - 20);
+        constructor(isSysOn) {
+            this.sys = isSysOn;
+            this.x = Math.random() * 50;
+            this.y = (isSysOn ? p2Y : p1Y) + 10 + Math.random() * (p1H - 20);
             this.type = Math.random() > 0.5 ? 'Ca' : 'CO3';
-            this.vx = parseFloat(flowSlider.value) + (Math.random() - 0.5);
+            this.vx = parseFloat(flowSlider.value) * 0.8 + (Math.random() - 0.5);
             this.vy = (Math.random() - 0.5) * 1.5;
             this.active = true;
         }
         update() {
-            this.x += this.vx + parseFloat(flowSlider.value)*0.5;
+            let flow = parseFloat(flowSlider.value);
+            this.x += this.vx + flow * 0.3;
             this.y += this.vy;
-            // Brownian motion ringan
-            this.vy += (Math.random() - 0.5) * 0.5;
-            // Batas pipa (pantulan)
-            let currentBottom = pipeBottom - scaleThickness[Math.floor(this.x) || 0];
-            if(this.y < pipeY + 5) this.vy *= -1;
-            if(this.y > currentBottom - 5) this.vy *= -1;
+            this.vy += (Math.random() - 0.5) * 0.8; // Brownian
+            
+            let floor = (this.sys ? p2Bottom : p1Bottom) - ((this.sys ? sysOn.scale[Math.floor(this.x)||0] : sysOff.scale[Math.floor(this.x)||0]) || 0);
+            let ceil = (this.sys ? p2Y : p1Y) + 5;
+            
+            if(this.y < ceil) { this.y = ceil; this.vy *= -1; }
+            if(this.y > floor - 5) { this.y = floor - 5; this.vy *= -1; }
         }
         draw() {
-            ctx.beginPath();
-            ctx.arc(this.x, this.y, 2.5, 0, Math.PI*2);
+            ctx.beginPath(); ctx.arc(this.x, this.y, 2.5, 0, Math.PI*2);
             ctx.fillStyle = this.type === 'Ca' ? '#3b82f6' : '#10b981';
             ctx.fill();
         }
     }
     
-    // Kelas Kristal
     class Crystal {
-        constructor(x, y, isAragonite) {
-            this.x = x;
-            this.y = y;
-            this.isAragonite = isAragonite;
-            this.size = isAragonite ? 2 : 4; // Aragonite kecil, Calcite mulai agak besar
-            this.vx = parseFloat(flowSlider.value) * (isAragonite ? 1.0 : 0.6); // Aragonite ringan hanyut, Calcite lambat
-            this.vy = isAragonite ? (Math.random()-0.5) : 0.5; // Calcite cenderung tenggelam
+        constructor(x, y, isAragonite, isSysOn) {
+            this.sys = isSysOn;
+            this.x = x; this.y = y;
+            this.isArag = isAragonite;
+            this.size = isAragonite ? 1.5 : 3;
+            this.vx = parseFloat(flowSlider.value) * (isAragonite ? 1.1 : 0.7);
+            this.vy = isAragonite ? (Math.random()-0.5) : 1.0;
             this.stuck = false;
         }
         update() {
             if (this.stuck) return;
+            this.x += this.vx; this.y += this.vy;
             
-            this.x += this.vx;
-            this.y += this.vy;
-            
-            // Pertumbuhan Kristal
-            if (!this.isAragonite && this.size < 12) {
-                this.size += 0.05; // Calcite tumbuh membesar
-                this.vy += 0.02;   // Semakin berat, makin turun
+            if (!this.isArag && this.size < 12) {
+                this.size += parseFloat(satSlider.value) * 0.001; 
+                this.vy += 0.05; 
             }
             
-            let floor = pipeBottom - (scaleThickness[Math.floor(this.x)] || 0);
+            let floor = (this.sys ? p2Bottom : p1Bottom) - ((this.sys ? sysOn.scale[Math.floor(this.x)||0] : sysOff.scale[Math.floor(this.x)||0]) || 0);
+            let ceil = (this.sys ? p2Y : p1Y) + 5;
             
-            // Logika Adhesi
-            if (!this.isAragonite && this.y >= floor - this.size) {
-                this.stuck = true;
-                this.y = floor - this.size/2;
-                // Menambah ketebalan scale
+            if (!this.isArag && this.y >= floor - this.size) {
+                this.stuck = true; this.y = floor - this.size/2;
                 let impactX = Math.floor(this.x);
-                for(let i = Math.max(0, impactX-10); i < Math.min(850, impactX+10); i++) {
-                    let dist = Math.abs(impactX - i);
-                    scaleThickness[i] += Math.max(0, (10 - dist) * 0.1);
+                let tgtScale = this.sys ? sysOn.scale : sysOff.scale;
+                for(let i = Math.max(0, impactX-12); i < Math.min(900, impactX+12); i++) {
+                    tgtScale[i] += Math.max(0, (12 - Math.abs(impactX - i)) * 0.08);
                 }
-            } else if (this.isAragonite) {
-                // Aragonite memantul dari dasar/scale
+            } else if (this.isArag) {
                 if(this.y >= floor - 5) this.vy *= -1;
-                if(this.y <= pipeY + 5) this.vy *= -1;
+                if(this.y <= ceil) this.vy *= -1;
             }
         }
         draw() {
-            ctx.save();
-            ctx.translate(this.x, this.y);
-            if (this.isAragonite) {
-                // Aragonite (Jarum/Lonjong merah muda)
-                ctx.fillStyle = 'rgba(255, 75, 75, 0.8)';
-                ctx.beginPath();
-                ctx.ellipse(0, 0, this.size+2, this.size, 0, 0, Math.PI*2);
-                ctx.fill();
+            ctx.save(); ctx.translate(this.x, this.y);
+            if (this.isArag) {
+                ctx.fillStyle = 'rgba(255, 75, 75, 0.9)';
+                ctx.beginPath(); ctx.ellipse(0, 0, this.size+3, this.size, 0, 0, Math.PI*2); ctx.fill();
             } else {
-                // Calcite (Poligon abu-abu gelap)
                 ctx.fillStyle = this.stuck ? '#52525b' : 'rgba(136, 146, 176, 0.9)';
                 ctx.beginPath();
-                ctx.moveTo(0, -this.size);
-                ctx.lineTo(this.size, 0);
-                ctx.lineTo(0, this.size);
-                ctx.lineTo(-this.size, 0);
-                ctx.closePath();
-                ctx.fill();
+                ctx.moveTo(0, -this.size); ctx.lineTo(this.size, 0); ctx.lineTo(0, this.size); ctx.lineTo(-this.size, 0);
+                ctx.closePath(); ctx.fill();
             }
             ctx.restore();
         }
     }
     
-    function drawBackground() {
-        ctx.fillStyle = '#12141a';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
+    function drawPipe(y, isON) {
+        ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 4;
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(900, y); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, y+150); ctx.lineTo(900, y+150); ctx.stroke();
         
-        // Pipa
-        ctx.strokeStyle = '#4b5563';
-        ctx.lineWidth = 6;
-        ctx.beginPath();
-        ctx.moveTo(0, pipeY); ctx.lineTo(850, pipeY);
-        ctx.moveTo(0, pipeBottom); ctx.lineTo(850, pipeBottom);
-        ctx.stroke();
+        ctx.fillStyle = 'rgba(255,255,255,0.03)'; ctx.font = '50px Arial';
+        ctx.fillText('»', 100, y + 90); ctx.fillText('»', 750, y + 90);
         
-        // Panah Aliran
-        ctx.fillStyle = 'rgba(255,255,255,0.05)';
-        ctx.font = '60px Arial';
-        ctx.fillText('»', 100, 160);
-        ctx.fillText('»', 700, 160);
+        ctx.fillStyle = '#a1a1aa'; ctx.font = '12px Arial';
+        ctx.fillText(isON ? 'EMSP: ON (Aragonite Mode)' : 'EMSP: OFF (Calcite Mode)', 10, y - 8);
         
-        // Kumparan (Coil) EMSP
         ctx.save();
-        for(let i=0; i<=coilWidth; i+=10) {
-            ctx.beginPath();
-            ctx.moveTo(coilX + i, pipeY - 10);
-            ctx.lineTo(coilX + i, pipeBottom + 10);
-            
-            if (isEMSP) {
-                ctx.strokeStyle = 'rgba(0, 242, 254, 0.7)';
-                ctx.lineWidth = 2;
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = '#00f2fe';
+        for(let i=0; i<=coilW; i+=10) {
+            ctx.beginPath(); ctx.moveTo(coilX + i, y - 10); ctx.lineTo(coilX + i, y + 160);
+            if (isON) {
+                ctx.strokeStyle = 'rgba(0, 242, 254, 0.6)'; ctx.lineWidth = 2;
+                ctx.shadowBlur = 10; ctx.shadowColor = '#00f2fe';
             } else {
-                ctx.strokeStyle = '#3f3f46';
-                ctx.lineWidth = 2;
-                ctx.shadowBlur = 0;
+                ctx.strokeStyle = '#2d323e'; ctx.lineWidth = 2; ctx.shadowBlur = 0;
             }
             ctx.stroke();
         }
-        
-        // Efek Gelombang Elektromagnetik Aktif
-        if(isEMSP) {
-            let waveOffset = (Date.now() / 200) % (Math.PI * 2);
+        if(isON) {
+            let waveOffset = (Date.now() / 150) % (Math.PI * 2);
             ctx.beginPath();
-            for(let i=0; i<coilWidth; i+=5) {
-                let yWave = Math.sin(i * 0.1 - waveOffset) * 20;
-                if(i===0) ctx.moveTo(coilX + i, 150 + yWave);
-                else ctx.lineTo(coilX + i, 150 + yWave);
+            for(let i=0; i<coilW; i+=5) {
+                let yWave = Math.sin(i * 0.1 - waveOffset) * 25;
+                if(i===0) ctx.moveTo(coilX + i, y + 75 + yWave);
+                else ctx.lineTo(coilX + i, y + 75 + yWave);
             }
-            ctx.strokeStyle = '#00f2fe';
-            ctx.lineWidth = 1.5;
-            ctx.stroke();
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.stroke();
         }
         ctx.restore();
         
-        // Lapisan Scale (Kerak)
-        ctx.fillStyle = '#3f3f46';
-        ctx.beginPath();
-        ctx.moveTo(0, pipeBottom);
-        for(let i=0; i<850; i++) {
-            ctx.lineTo(i, pipeBottom - scaleThickness[i]);
-        }
-        ctx.lineTo(850, pipeBottom);
-        ctx.closePath();
-        ctx.fill();
-        
-        // Garis batas kerak
-        ctx.strokeStyle = '#71717a';
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        let tgtScale = isON ? sysOn.scale : sysOff.scale;
+        ctx.fillStyle = '#3f3f46'; ctx.beginPath(); ctx.moveTo(0, y+150);
+        for(let i=0; i<900; i++) ctx.lineTo(i, y+150 - tgtScale[i]);
+        ctx.lineTo(900, y+150); ctx.closePath(); ctx.fill();
+        ctx.strokeStyle = '#71717a'; ctx.lineWidth = 1; ctx.stroke();
     }
     
-    function updateDashboard() {
-        // Update Labels
-        document.getElementById('valSat').innerText = satSlider.value + '%';
-        document.getElementById('valFlow').innerText = flowSlider.value + 'x';
+    function processSystem(sysObj, isON) {
+        let sat = parseInt(satSlider.value);
+        let spawnRate = sat / 100;
         
-        const morphBox = document.getElementById('morphBox');
-        const morphVal = document.getElementById('morphValue');
-        
-        const bNuc = document.getElementById('barNuc');
-        const bGro = document.getElementById('barGro');
-        const bAdh = document.getElementById('barAdh');
-        
-        if(isEMSP) {
-            morphBox.className = 'morph-box morph-aragonite';
-            morphVal.innerText = 'Aragonite (Hanyut)';
-            
-            bNuc.style.width = '90%'; bNuc.style.background = '#4caf50';
-            bGro.style.width = '15%'; bGro.style.background = '#4caf50';
-            bAdh.style.width = '5%';  bAdh.style.background = '#4caf50';
-            
-            document.getElementById('txtNuc').innerText = 'Sangat Tinggi';
-            document.getElementById('txtGro').innerText = 'Rendah (Terbatas)';
-            document.getElementById('txtAdh').innerText = 'Nihil / Aman';
-        } else {
-            morphBox.className = 'morph-box morph-calcite';
-            morphVal.innerText = 'Calcite (Melekat)';
-            
-            bNuc.style.width = '30%'; bNuc.style.background = '#f44336';
-            bGro.style.width = '85%'; bGro.style.background = '#f44336';
-            bAdh.style.width = '95%'; bAdh.style.background = '#f44336';
-            
-            document.getElementById('txtNuc').innerText = 'Rendah (Spontan)';
-            document.getElementById('txtGro').innerText = 'Tinggi (Agresif)';
-            document.getElementById('txtAdh').innerText = 'Kritis (Scaling)';
-        }
-    }
-    
-    function drawCharts() {
-        cCtx.fillStyle = '#12141a';
-        cCtx.fillRect(0,0, chartCanvas.width, chartCanvas.height);
-        
-        // Grid
-        cCtx.strokeStyle = '#262a35';
-        cCtx.beginPath();
-        cCtx.moveTo(0, 50); cCtx.lineTo(850, 50);
-        cCtx.stroke();
-        
-        // Label
-        cCtx.fillStyle = '#a1a1aa';
-        cCtx.font = '10px Arial';
-        cCtx.fillText('Deposit Kerak', 10, 15);
-        cCtx.fillText('Populasi Aragonite', 10, 85);
-        
-        // Data maintenance
-        let totalScale = scaleThickness.reduce((a,b)=>a+b, 0);
-        let suspended = crystals.filter(c => c.isAragonite && c.x < 850).length;
-        
-        chartDataScale.push(totalScale / 15); 
-        chartDataCrystals.push(suspended);
-        if(chartDataScale.length > 850) {
-            chartDataScale.shift();
-            chartDataCrystals.shift();
+        if(Math.random() < spawnRate && sysObj.ions.length < (isON ? 120 : 150)) {
+            sysObj.ions.push(new Ion(isON));
         }
         
-        // Draw Scale Line
-        cCtx.strokeStyle = 'var(--calcite-color)';
-        cCtx.lineWidth = 2;
-        cCtx.beginPath();
-        for(let i=0; i<chartDataScale.length; i++) {
-            cCtx.lineTo(i, 50 - Math.min(50, chartDataScale[i]));
-        }
-        cCtx.stroke();
-        
-        // Draw Aragonite Line
-        cCtx.strokeStyle = 'var(--aragonite-color)';
-        cCtx.beginPath();
-        for(let i=0; i<chartDataCrystals.length; i++) {
-            cCtx.lineTo(i, 100 - Math.min(50, chartDataCrystals[i]));
-        }
-        cCtx.stroke();
-    }
-    
-    function animate() {
-        drawBackground();
-        
-        // Spawn Ion berdasarkan saturasi
-        let spawnRate = parseInt(satSlider.value) / 100;
-        if(Math.random() < spawnRate && particles.length < 150) {
-            particles.push(new Ion());
-        }
-        
-        // Update Ion & Deteksi Tabrakan (Nukleasi)
-        for(let i = particles.length - 1; i >= 0; i--) {
-            let p1 = particles[i];
-            p1.update();
-            p1.draw();
+        for(let i = sysObj.ions.length - 1; i >= 0; i--) {
+            let p1 = sysObj.ions[i];
+            p1.update(); p1.draw();
+            if(p1.x > 900) { sysObj.ions.splice(i, 1); continue; }
             
-            // Hapus jika keluar batas
-            if(p1.x > 850) {
-                particles.splice(i, 1);
-                continue;
-            }
-            
-            // Deteksi tabrakan Ca dan CO3
             if(p1.active) {
                 for(let j = i - 1; j >= 0; j--) {
-                    let p2 = particles[j];
+                    let p2 = sysObj.ions[j];
                     if(p2.active && p1.type !== p2.type) {
-                        let dx = p1.x - p2.x;
-                        let dy = p1.y - p2.y;
-                        let dist = Math.sqrt(dx*dx + dy*dy);
-                        
-                        // Jarak tabrakan
-                        if(dist < 10) {
-                            // Probabilitas nukleasi
-                            // Jika masuk zona coil (350-500) dan EMSP ON, probabilitas 95%
-                            // Jika EMSP OFF, probabilitas 10% (lambat)
-                            let inCoil = (p1.x > coilX && p1.x < coilX + coilWidth);
-                            let prob = (isEMSP && inCoil) ? 0.95 : 0.05;
+                        let dist = Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
+                        if(dist < 12) {
+                            let inCoil = (p1.x > coilX && p1.x < coilX + coilW);
+                            let prob = (isON && inCoil) ? 0.95 : (sat/200); 
                             
                             if(Math.random() < prob) {
-                                p1.active = false;
-                                p2.active = false;
-                                // Buat kristal. Jika di zona coil dan EMSP ON -> Aragonite
-                                let makeAragonite = (isEMSP && inCoil);
-                                crystals.push(new Crystal(p1.x, p1.y, makeAragonite));
+                                p1.active = false; p2.active = false;
+                                let isArag = (isON && inCoil);
+                                sysObj.crystals.push(new Crystal(p1.x, p1.y, isArag, isON));
                                 break;
                             }
                         }
@@ -542,45 +290,75 @@ html_app = """
                 }
             }
         }
+        sysObj.ions = sysObj.ions.filter(p => p.active);
         
-        // Bersihkan ion yang tidak aktif
-        particles = particles.filter(p => p.active);
-        
-        // Update Kristal
-        for(let i = crystals.length - 1; i >= 0; i--) {
-            let c = crystals[i];
-            c.update();
-            c.draw();
-            if(c.x > 850 && !c.stuck) {
-                crystals.splice(i, 1);
-            }
+        for(let i = sysObj.crystals.length - 1; i >= 0; i--) {
+            let c = sysObj.crystals[i];
+            c.update(); c.draw();
+            if(c.x > 900 && !c.stuck) sysObj.crystals.splice(i, 1);
         }
+    }
+    
+    function updateUI() {
+        let sat = parseInt(satSlider.value);
+        document.getElementById('valSat').innerText = sat + '%';
+        document.getElementById('valFlow').innerText = flowSlider.value + ' m/s';
         
-        updateDashboard();
-        drawCharts();
+        let lblSuper = document.getElementById('lblSuper');
+        let lblRisk = document.getElementById('lblRisk');
         
+        if(sat < 30) { lblSuper.innerText = 'Rendah'; lblSuper.style.color = '#10b981'; lblRisk.innerText = 'Aman'; lblRisk.style.color = '#10b981'; }
+        else if(sat < 70) { lblSuper.innerText = 'Sedang'; lblSuper.style.color = '#f59e0b'; lblRisk.innerText = 'Waspada'; lblRisk.style.color = '#f59e0b'; }
+        else { lblSuper.innerText = 'Tinggi'; lblSuper.style.color = '#ff4b4b'; lblRisk.innerText = 'Kritis'; lblRisk.style.color = '#ff4b4b'; }
+        
+        let depOff = sysOff.scale.reduce((a,b)=>a+b, 0) / 900;
+        let depOn = sysOn.scale.reduce((a,b)=>a+b, 0) / 900;
+        document.getElementById('valDepOff').innerText = depOff.toFixed(1) + ' mm';
+        document.getElementById('valDepOn').innerText = depOn.toFixed(1) + ' mm';
+        
+        chartDepOff.push(depOff);
+        chartDepOn.push(depOn);
+        chartAragOn.push(sysOn.crystals.filter(c => c.isArag && c.x < 900).length / 2);
+        
+        if(chartDepOff.length > 900) { chartDepOff.shift(); chartDepOn.shift(); chartAragOn.shift(); }
+    }
+    
+    function drawCharts() {
+        cCtx.fillStyle = '#12141a'; cCtx.fillRect(0,0, chartCanvas.width, chartCanvas.height);
+        cCtx.strokeStyle = '#262a35'; cCtx.beginPath(); cCtx.moveTo(0, 75); cCtx.lineTo(900, 75); cCtx.stroke();
+        
+        cCtx.fillStyle = '#a1a1aa'; cCtx.font = '11px Arial';
+        cCtx.fillText('Pertumbuhan Kerak (OFF)', 10, 20);
+        cCtx.fillText('Suspensi Aragonite (ON)', 10, 95);
+        
+        cCtx.lineWidth = 2.5;
+        // Line OFF (Scale)
+        cCtx.strokeStyle = 'var(--calcite-color)'; cCtx.beginPath();
+        for(let i=0; i<chartDepOff.length; i++) cCtx.lineTo(i, 75 - Math.min(75, chartDepOff[i]*1.5)); cCtx.stroke();
+        // Line ON (Aragonite)
+        cCtx.strokeStyle = 'var(--aragonite-color)'; cCtx.beginPath();
+        for(let i=0; i<chartAragOn.length; i++) cCtx.lineTo(i, 150 - Math.min(75, chartAragOn[i]*2)); cCtx.stroke();
+    }
+    
+    function animate() {
+        ctx.fillStyle = '#12141a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        drawPipe(p1Y, false); processSystem(sysOff, false);
+        drawPipe(p2Y, true); processSystem(sysOn, true);
+        
+        updateUI(); drawCharts();
         requestAnimationFrame(animate);
     }
     
-    // Event Listeners
-    toggle.addEventListener('change', (e) => {
-        isEMSP = e.target.checked;
-    });
-    
     document.getElementById('btnReset').addEventListener('click', () => {
-        scaleThickness = new Array(850).fill(0);
-        particles = [];
-        crystals = [];
-        chartDataScale = [];
-        chartDataCrystals = [];
+        sysOff = { ions: [], crystals: [], scale: new Array(900).fill(0) };
+        sysOn = { ions: [], crystals: [], scale: new Array(900).fill(0) };
+        chartDepOff = []; chartDepOn = []; chartAragOn = [];
     });
     
-    // Mulai Animasi
     animate();
 </script>
 </body>
 </html>
 """
 
-# Menyuntikkan aplikasi HTML ke dalam Streamlit tanpa margin/padding berlebih
-components.html(html_app, height=850, scrolling=False)
+components.html(html_app, height=900, scrolling=False)
