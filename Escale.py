@@ -76,8 +76,8 @@ html_app = """
             <div class="legend">
                 <div class="legend-item"><div class="dot" style="background:#3b82f6;"></div> Ion Ca²⁺</div>
                 <div class="legend-item"><div class="dot" style="background:#10b981;"></div> Ion CO₃²⁻</div>
-                <div class="legend-item"><div class="dot" style="background:var(--calcite-color); border-radius:2px;"></div> Calcite (Kerak)</div>
-                <div class="legend-item"><div class="dot" style="background:var(--aragonite-color); border-radius:50%;"></div> Aragonite (Suspended/Tersuspensi)</div>
+                <div class="legend-item"><div class="dot" style="background:var(--calcite-color); border-radius:2px;"></div> Calcite (Kerak Melekat)</div>
+                <div class="legend-item"><div class="dot" style="background:var(--aragonite-color); border-radius:50%;"></div> Aragonite (Tersuspensi)</div>
             </div>
             
             <canvas id="chartCanvas" width="900" height="150"></canvas>
@@ -116,7 +116,7 @@ html_app = """
     </div>
     
     <div class="footer-note">
-        <b>Catatan Ilmiah:</b> Simulasi ini membandingkan mekanisme kristalisasi secara *real-time*. Pada sistem tanpa alat (Atas), tabrakan ion di kondisi supersaturasi memicu pembentukan Calcite yang agresif tumbuh dan melekat di dinding pipa. Saat EMSP aktif (Bawah), medan elektromagnetik menginduksi laju nukleasi masif, memaksa ion membentuk kristal Aragonite mikroskopis yang kehilangan daya adhesi dan tetap berada dalam fase suspensi (*suspended solids*), sehingga mencegah terbentuknya lapisan *scale*.
+        <b>Catatan Ilmiah:</b> Simulasi ini membandingkan mekanisme kristalisasi secara konseptual. Pada sistem tanpa alat (Atas), tabrakan ion di kondisi supersaturasi memicu pembentukan Calcite yang agresif tumbuh dan melekat di dinding pipa. Saat EMSP aktif (Bawah), medan elektromagnetik menginduksi laju nukleasi masif. Ion yang telah melewati medan elektromagnetik secara eksklusif dipaksa membentuk kristal Aragonite mikroskopis yang kehilangan daya adhesi dan tetap berada dalam fase suspensi (<i>suspended solids</i>), sehingga secara efektif mencegah pertumbuhan deposit kerak baru.
     </div>
 
 <script>
@@ -152,7 +152,7 @@ html_app = """
             let flow = parseFloat(flowSlider.value);
             this.x += this.vx + flow * 0.3;
             this.y += this.vy;
-            this.vy += (Math.random() - 0.5) * 0.8; // Brownian
+            this.vy += (Math.random() - 0.5) * 0.8; // Gerakan Brownian
             
             let floor = (this.sys ? p2Bottom : p1Bottom) - ((this.sys ? sysOn.scale[Math.floor(this.x)||0] : sysOff.scale[Math.floor(this.x)||0]) || 0);
             let ceil = (this.sys ? p2Y : p1Y) + 5;
@@ -181,6 +181,7 @@ html_app = """
             if (this.stuck) return;
             this.x += this.vx; this.y += this.vy;
             
+            // Calcite (bukan Aragonite) tumbuh semakin besar dan berat
             if (!this.isArag && this.size < 12) {
                 this.size += parseFloat(satSlider.value) * 0.001; 
                 this.vy += 0.05; 
@@ -189,6 +190,7 @@ html_app = """
             let floor = (this.sys ? p2Bottom : p1Bottom) - ((this.sys ? sysOn.scale[Math.floor(this.x)||0] : sysOff.scale[Math.floor(this.x)||0]) || 0);
             let ceil = (this.sys ? p2Y : p1Y) + 5;
             
+            // Logika pengendapan kerak (Hanya untuk Calcite)
             if (!this.isArag && this.y >= floor - this.size) {
                 this.stuck = true; this.y = floor - this.size/2;
                 let impactX = Math.floor(this.x);
@@ -197,6 +199,7 @@ html_app = """
                     tgtScale[i] += Math.max(0, (12 - Math.abs(impactX - i)) * 0.08);
                 }
             } else if (this.isArag) {
+                // Aragonite melayang dan memantul halus
                 if(this.y >= floor - 5) this.vy *= -1;
                 if(this.y <= ceil) this.vy *= -1;
             }
@@ -204,9 +207,11 @@ html_app = """
         draw() {
             ctx.save(); ctx.translate(this.x, this.y);
             if (this.isArag) {
+                // Render Aragonite: Kecil, lonjong, merah muda
                 ctx.fillStyle = 'rgba(255, 75, 75, 0.9)';
                 ctx.beginPath(); ctx.ellipse(0, 0, this.size+3, this.size, 0, 0, Math.PI*2); ctx.fill();
             } else {
+                // Render Calcite: Besar, poligon bersudut, abu-abu
                 ctx.fillStyle = this.stuck ? '#52525b' : 'rgba(136, 146, 176, 0.9)';
                 ctx.beginPath();
                 ctx.moveTo(0, -this.size); ctx.lineTo(this.size, 0); ctx.lineTo(0, this.size); ctx.lineTo(-this.size, 0);
@@ -276,12 +281,15 @@ html_app = """
                     if(p2.active && p1.type !== p2.type) {
                         let dist = Math.sqrt((p1.x-p2.x)**2 + (p1.y-p2.y)**2);
                         if(dist < 12) {
-                            let inCoil = (p1.x > coilX && p1.x < coilX + coilW);
+                            let inCoil = (p1.x >= coilX && p1.x <= coilX + coilW);
+                            let passedCoil = (p1.x >= coilX); // Ion telah memasuki/melewati zona elektromagnetik
+                            
                             let prob = (isON && inCoil) ? 0.95 : (sat/200); 
                             
                             if(Math.random() < prob) {
                                 p1.active = false; p2.active = false;
-                                let isArag = (isON && inCoil);
+                                // PERBAIKAN LOGIKA: Jika EMSP ON dan fluida telah melalui zona kumparan, HANYA terbentuk Aragonite
+                                let isArag = (isON && passedCoil);
                                 sysObj.crystals.push(new Crystal(p1.x, p1.y, isArag, isON));
                                 break;
                             }
