@@ -1,187 +1,159 @@
 import streamlit as st
+import plotly.graph_objects as go
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as patches
 
 # ================= KONFIGURASI HALAMAN =================
 st.set_page_config(page_title="Simulasi Scaling BaSO4 & SrSO4", layout="wide")
-st.title("🛢️ Simulasi Presipitasi Barium Sulfat & Stronsium Sulfat di Pipa Minyak")
+st.markdown("<h1 style='text-align: center;'>🔄 Presipitasi Barium Sulfat (BaSO₄)</h1>", unsafe_allow_html=True)
 st.markdown("---")
 
-# ================= INPUT PARAMETER =================
+# ================= SIDEBAR INPUT =================
 with st.sidebar:
     st.header("⚙️ Parameter Air Formasi & Injeksi")
-    ba_conc = st.number_input("Konsentrasi Ba²⁺ dalam Air Formasi (mg/L)", min_value=0.0, max_value=500.0, value=150.0, step=5.0)
-    sr_conc = st.number_input("Konsentrasi Sr²⁺ dalam Air Formasi (mg/L)", min_value=0.0, max_value=300.0, value=80.0, step=5.0)
-    so4_conc = st.number_input("Konsentrasi SO₄²⁻ dalam Air Laut Injeksi (mg/L)", min_value=0.0, max_value=3000.0, value=2000.0, step=50.0)
+    ba_conc = st.number_input("Kons. Ba²⁺ (mg/L)", min_value=0.0, max_value=500.0, value=150.0, step=5.0)
+    sr_conc = st.number_input("Kons. Sr²⁺ (mg/L) [Kompetitor]", min_value=0.0, max_value=300.0, value=80.0, step=5.0)
+    so4_conc = st.number_input("Kons. SO₄²⁻ di Air Laut (mg/L)", min_value=0.0, max_value=3000.0, value=2000.0, step=50.0)
     mixing_ratio = st.slider("Rasio Air Laut Injeksi (%)", min_value=0, max_value=100, value=30, step=1)
     
     st.markdown("---")
     st.header("📏 Spesifikasi Pipa")
-    pipe_diameter_mm = st.number_input("Diameter Dalam Pipa (mm)", min_value=50, max_value=300, value=150, step=10)
+    pipe_diameter_mm = st.number_input("Diameter Pipa (mm)", min_value=50, max_value=300, value=150, step=10)
     pipe_length_m = st.number_input("Panjang Pipa (m)", min_value=10, max_value=1000, value=100, step=10)
-    
-    st.markdown("---")
-    st.caption("⚡ Efisiensi pengendapan diasumsikan 98% (stoikiometris).")
 
 # ================= PERHITUNGAN KIMIA (STOIKIOMETRI) =================
-# Konstanta massa molar (g/mol)
-M_Ba = 137.3
-M_Sr = 87.6
-M_SO4 = 96.0
-M_BaSO4 = 233.4
-M_SrSO4 = 183.6
+M_Ba, M_Sr, M_SO4 = 137.3, 87.6, 96.0
+M_BaSO4, M_SrSO4 = 233.4, 183.6
 
-# Konsentrasi setelah mixing (berdasarkan fraksi air laut)
+# Konsentrasi setelah pencampuran
 ba_mix = ba_conc * (1 - mixing_ratio / 100.0)
 sr_mix = sr_conc * (1 - mixing_ratio / 100.0)
 so4_mix = so4_conc * (mixing_ratio / 100.0)
 
-# Konversi ke mol (per Liter)
+# Mol per Liter
 mol_ba = ba_mix / M_Ba
 mol_sr = sr_mix / M_Sr
 mol_so4 = so4_mix / M_SO4
 
-# Endapan BaSO4 (prioritas, karena Ksp lebih kecil)
-precip_ba_mol = min(mol_ba, mol_so4) * 0.98  # 98% efisiensi
+# Endapan BaSO4 (prioritas)
+precip_ba_mol = min(mol_ba, mol_so4) * 0.98  # efisiensi 98%
 mol_so4_remaining = mol_so4 - precip_ba_mol
 
 # Endapan SrSO4 (menggunakan sisa sulfat)
 precip_sr_mol = min(mol_sr, max(0, mol_so4_remaining)) * 0.98
 
 # Massa endapan (mg/L)
-mass_ba = precip_ba_mol * M_BaSO4  # mg/L
-mass_sr = precip_sr_mol * M_SrSO4  # mg/L
+mass_ba = precip_ba_mol * M_BaSO4
+mass_sr = precip_sr_mol * M_SrSO4
 total_mass = mass_ba + mass_sr
 
-# ================= PERHITUNGAN DAMPAK KE PIPA =================
-# Konversi massa total ke volume (asumsi densitas kerak ~ 4000 kg/m³ = 4 g/cm³ = 4e6 mg/m³)
-# Volume per liter air = total_mass (mg) / 4e6 (mg/m³) = total_mass * 1e-6 / 4  m³
-# Sederhanakan: 1 mg/L = 1e-6 kg/m3. Density 4000 kg/m3 -> Volume = mass_kg / 4000
-volume_scale_m3_per_liter = (total_mass / 1e6) / 4000  # m³ per liter air
-# Asumsikan total volume air yang mengalir mempengaruhi pipa adalah 1 m³ (untuk skala visual)
-total_volume_scale_m3 = volume_scale_m3_per_liter * 1000  # skala ke 1 m³
+# ================= SKOR POTENSI KERAK (untuk Jarum Gauge) =================
+# Skala 0 - 50, merepresentasikan tingkat keparahan pengkerakan
+# Jika total_mass = 250 mg/L -> skor 50 (sangat parah)
+risk_score = min(50, total_mass * 0.2)  
+# Contoh: massa 25 mg/L -> skor 5, massa 125 mg/L -> skor 25, dst.
 
-# Pengurangan diameter pipa
-r_initial_m = (pipe_diameter_mm / 1000) / 2
-# Anggap kerak menempel merata di sepanjang pipa. Volume kerak = pi * (R² - r²) * L
-# Luas penampang yang hilang = volume / L
-area_lost = total_volume_scale_m3 / pipe_length_m  # m²
-# Pengurangan jari-jari (approximation: area_lost ≈ 2 * pi * R * delta_r)
-delta_r = area_lost / (2 * np.pi * r_initial_m) if r_initial_m > 0 else 0
-new_r = max(0, r_initial_m - delta_r)
-new_diameter_mm = new_r * 2 * 1000
+# ================= DAMPAK KE PIPA =================
+r_initial = (pipe_diameter_mm / 1000) / 2
+# Asumsi volume kerak menempel merata
+volume_scale = (total_mass / 1e6) / 4000 * 1000  # per 1 m³ air
+area_lost = volume_scale / pipe_length_m
+delta_r = area_lost / (2 * np.pi * r_initial) if r_initial > 0 else 0
+new_r = max(0, r_initial - delta_r)
+new_diameter = new_r * 2 * 1000
 
 # Status Pipa
-if new_r > 0.9 * r_initial_m:
+if total_mass < 0.1:
     status_pipa = "✅ Aman"
-    status_color = "green"
-elif new_r > 0.7 * r_initial_m:
-    status_pipa = "⚠️ Waspada (Mulai Menyumbat)"
-    status_color = "orange"
+    laju_kerak = "Tidak Ada"
+elif new_r > 0.8 * r_initial:
+    status_pipa = "⚠️ Waspada"
+    laju_kerak = "Rendah"
+elif new_r > 0.5 * r_initial:
+    status_pipa = "🔶 Mulai Menyumbat"
+    laju_kerak = "Sedang"
 else:
-    status_pipa = "🚨 SUMBAT KRITIS / Minyak Tersumbat!"
-    status_color = "red"
+    status_pipa = "🚨 SUMBAT KRITIS!"
+    laju_kerak = "Tinggi"
 
-# Dampak terhadap Pressure Drop (ΔP ≈ 1/D^5) dan Flow Rate (Q ≈ D^4)
-if new_r > 0:
-    ratio_d = new_diameter_mm / pipe_diameter_mm
-    delta_p_ratio = (1 / ratio_d) ** 5
-    flow_rate_ratio = ratio_d ** 4
-else:
-    delta_p_ratio = float('inf')
-    flow_rate_ratio = 0
-
-# ================= OUTPUT & VISUALISASI =================
-col1, col2 = st.columns([2, 1])
+# ================= LAYOUT UTAMA (MIRIP SS) =================
+col1, col2 = st.columns([2, 1.5], gap="medium")
 
 with col1:
-    st.subheader("🧪 Hasil Analisis Kimia Air")
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("Konsentrasi Ba²⁺ tercampur", f"{ba_mix:.1f} mg/L")
-    col_b.metric("Konsentrasi Sr²⁺ tercampur", f"{sr_mix:.1f} mg/L")
-    col_c.metric("Konsentrasi SO₄²⁻ tercampur", f"{so4_mix:.1f} mg/L")
-    
-    st.subheader("⚖️ Massa Endapan yang Terbentuk (per Liter Air)")
-    col_d, col_e, col_f = st.columns(3)
-    col_d.metric("Massa BaSO₄ ↓", f"{mass_ba:.2f} mg/L", delta="Prioritas")
-    col_e.metric("Massa SrSO₄ ↓", f"{mass_sr:.2f} mg/L", delta="Kompetitor")
-    col_f.metric("**Total Massa Kerak**", f"{total_mass:.2f} mg/L", delta="Jika > 0 mulai scaling")
+    # ----- GAUGE / SPEEDOMETER (BENTUK SEPERTI SS) -----
+    fig = go.Figure(go.Indicator(
+        domain={'x': [0, 1], 'y': [0, 1]},
+        value=round(risk_score, 1),
+        mode="gauge+number+delta",
+        title={'text': "Potensi Kerak ↑", 'font': {'size': 24, 'color': 'black'}},
+        delta={'reference': 40, 'increasing.color': "red", 'decreasing.color': "green"},
+        gauge={
+            'axis': {'range': [0, 50], 'tickwidth': 2, 'tickvals': [0, 10, 20, 30, 40, 50], 
+                     'tickfont': {'size': 14, 'color': 'black'}},
+            'bar': {'color': "#FF8C00"},
+            'bgcolor': "white",
+            'borderwidth': 2,
+            'bordercolor': "gray",
+            'steps': [
+                {'range': [0, 15], 'color': 'rgba(144, 238, 144, 0.7)'},   # Hijau
+                {'range': [15, 35], 'color': 'rgba(255, 255, 0, 0.6)'},    # Kuning
+                {'range': [35, 50], 'color': 'rgba(255, 100, 100, 0.7)'}   # Merah
+            ],
+            'threshold': {
+                'line': {'color': "black", 'width': 4},
+                'thickness': 0.8,
+                'value': round(risk_score, 1)
+            }
+        }
+    ))
+    fig.update_layout(height=350, margin=dict(l=30, r=30, t=50, b=30))
+    st.plotly_chart(fig, use_container_width=True)
 
-    # Chart batang
-    fig_bar, ax_bar = plt.subplots(figsize=(10, 4))
-    labels = ['BaSO₄', 'SrSO₄']
-    values = [mass_ba, mass_sr]
-    colors = ['#FF8C00', '#1E90FF']  # Oranye untuk Ba, Biru untuk Sr
-    bars = ax_bar.bar(labels, values, color=colors, edgecolor='black')
-    ax_bar.set_ylabel('Massa Endapan (mg/L)')
-    ax_bar.set_title('Komposisi Kerak Berdasarkan Jenis Ion')
-    for bar, val in zip(bars, values):
-        ax_bar.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 0.5, f'{val:.1f}', ha='center', va='bottom')
-    st.pyplot(fig_bar)
+    # ----- BAGIAN BAWAH KOLOM KIRI: MASSA & KOMPOSISI -----
+    col_a, col_b, col_c = st.columns(3)
+    col_a.metric("⚖️ Total Massa Kerak", f"{total_mass:.2f} mg/L")
+    col_b.metric("🟠 Massa BaSO₄", f"{mass_ba:.2f} mg/L")
+    col_c.metric("🔵 Massa SrSO₄", f"{mass_sr:.2f} mg/L")
+    
+    # Indikator visual kecil untuk komposisi
+    if total_mass > 0.1:
+        st.progress(mass_ba / total_mass if total_mass > 0 else 0, text=f"Proporsi BaSO₄: {mass_ba/total_mass*100:.1f}%")
+    else:
+        st.info("Belum ada endapan yang terbentuk.")
 
 with col2:
-    st.subheader("📉 Status Operasional Pipa")
-    st.metric("Diameter Pipa Tersisa", f"{new_diameter_mm:.2f} mm", delta=f"{new_diameter_mm - pipe_diameter_mm:.1f} mm")
-    st.metric("Perubahan Pressure Drop (ΔP)", f"{delta_p_ratio:.2f} x lipat" if delta_p_ratio < 100 else "~ TAK TERHINGGA (Sumbat)", delta="Naik" if delta_p_ratio > 1 else "Normal")
-    st.metric("Perubahan Laju Alir (Q)", f"{flow_rate_ratio:.2%}", delta="Turun" if flow_rate_ratio < 1 else "Normal")
+    st.subheader("📊 Status Operasi Pipa")
+    st.metric("Laju Kerak", laju_kerak)
+    st.metric("Status Pipa", status_pipa)
+    st.metric("Rasio Air Laut (%)", f"{mixing_ratio} %")
+    st.metric("Kons. Barium Tercampur", f"{ba_mix:.1f} mg/L")
+    st.metric("Kons. Sulfat Tercampur", f"{so4_mix:.1f} mg/L")
+    st.metric("Diameter Pipa Tersisa", f"{new_diameter:.2f} mm", 
+              delta=f"{new_diameter - pipe_diameter_mm:.2f} mm")
     
-    st.markdown(f"### 🔴 Status Pipa: {status_pipa}")
-    st.progress(min(1.0, new_r / r_initial_m), text=f"Tersisa {new_r / r_initial_m:.1%} kapasitas aliran")
-
-# ================= VISUALISASI PENAMPANG PIPA =================
-st.markdown("---")
-st.subheader("📐 Visualisasi Penampang Pipa (Tampak Depan)")
-
-fig_pipe, ax_pipe = plt.subplots(figsize=(5, 5))
-# Buat lingkaran luar (dinding pipa)
-outer_circle = patches.Circle((0, 0), r_initial_m, edgecolor='black', facecolor='none', linewidth=3, label='Dinding Pipa')
-ax_pipe.add_patch(outer_circle)
-
-# Buat lingkaran dalam (area aliran tersisa)
-if new_r > 0.001:
-    inner_color = 'lightgreen' if new_r > 0.9 * r_initial_m else 'orange' if new_r > 0.7 * r_initial_m else 'red'
-    inner_circle = patches.Circle((0, 0), new_r, edgecolor='darkgray', facecolor=inner_color, alpha=0.7, label='Area Aliran Tersisa')
-    ax_pipe.add_patch(inner_circle)
-else:
-    st.warning("Pipa telah tersumbat total!")
-
-# Gambar kerak (cincin antara r_initial dan new_r)
-if new_r < r_initial_m:
-    # Buat cincin kerak dengan warna campuran (orange dan biru)
-    # Kita buat 2 sektor untuk menunjukkan komposisi BaSO4 (orange) dan SrSO4 (biru)
-    # Sederhana: plot annulus dengan warna gradient atau split
-    # Method: plot ring dengan warna orange untuk bagian Ba, biru untuk Sr
-    # Kita split secara visual menjadi 2 bagian (180 derajat masing-masing)
-    theta = np.linspace(0, 2*np.pi, 100)
-    # Untuk BaSO4 (0-180 derajat)
-    wedge1 = patches.Wedge((0,0), r_initial_m, 0, 180, width=r_initial_m-new_r, facecolor='#FF8C00', edgecolor='black', alpha=0.8, label='Kerak BaSO₄')
-    wedge2 = patches.Wedge((0,0), r_initial_m, 180, 360, width=r_initial_m-new_r, facecolor='#1E90FF', edgecolor='black', alpha=0.8, label='Kerak SrSO₄')
-    ax_pipe.add_patch(wedge1)
-    ax_pipe.add_patch(wedge2)
-
-# Set aspek dan batas
-ax_pipe.set_aspect('equal')
-ax_pipe.set_xlim(-r_initial_m*1.2, r_initial_m*1.2)
-ax_pipe.set_ylim(-r_initial_m*1.2, r_initial_m*1.2)
-ax_pipe.set_title('Penampang Pipa & Tebal Kerak')
-ax_pipe.legend(loc='upper left')
-ax_pipe.grid(False)
-st.pyplot(fig_pipe)
-
-# ================= KESIMPULAN AKHIR =================
-st.markdown("---")
-st.subheader("📝 Interpretasi / Rekomendasi")
-
-if total_mass < 0.01:
-    st.success("✅ **Tidak terjadi pengendapan signifikan.** Pipa aman dari scaling BaSO₄/SrSO₄.")
-else:
-    st.warning("⚠️ **Terjadi pengendapan!** Perhatikan penurunan diameter pipa.")
-    if status_pipa == "🚨 SUMBAT KRITIS / Minyak Tersumbat!":
-        st.error("🛑 **BAHAYA!** Pipa hampir tersumbat total. Produksi minyak terhambat. Lakukan acidizing atau squeeze inhibitor segera!")
+    # Estimasi dampak aliran
+    if new_r > 0:
+        ratio_d = new_diameter / pipe_diameter_mm
+        flow_rate = ratio_d ** 4
+        st.metric("Perkiraan Laju Alir Tersisa", f"{flow_rate:.1%}")
+        if flow_rate < 0.3:
+            st.error("🛑 **PERINGATAN:** Produksi minyak sangat terhambat! Lakukan tindakan pencegahan scaling.")
     else:
-        st.info("📌 **Saran:** Kurangi rasio injeksi air laut, atau gunakan inhibitor scale (seperti DTPA) untuk mencegah presipitasi lebih lanjut.")
+        st.error("🚫 PIPA TERSAMBAT TOTAL - MINYAK TIDAK BISA MENGALIR!")
 
-# ================= PENTING! CEK LOGIKA =================
+# ================= KOTAK INFORMASI TAMBAHAN (SEPERTI DI SS) =================
 st.markdown("---")
-st.caption(f"🔬 **Cek Logika**: Saat ini Rasio Air Laut = {mixing_ratio}%. Konsentrasi SO4 tercampur = {so4_mix:.1f} mg/L. Jika nilai ini 0, maka BaSO4 & SrSO4 = 0. (Sesuai dengan teori kimia).")
+st.subheader("🔬 Detail Air Formasi & Reaksi")
+info_col1, info_col2, info_col3 = st.columns(3)
+info_col1.info(f"🧪 **Air Formasi (Ba²⁺)** : {ba_conc} mg/L\n\n**Air Laut (SO₄²⁻)** : {so4_conc} mg/L")
+info_col2.success(f"✅ **Reaksi Prioritas**: Ba²⁺ + SO₄²⁻ → BaSO₄↓ (Oranye)\n\n🔹 **Reaksi Kompetitor**: Sr²⁺ + SO₄²⁻ → SrSO₄↓ (Biru)")
+info_col3.warning(f"⚡ **Efisiensi Pengendapan**: 98% (stoikiometris)\n\n📌 **Status Akhir**: {status_pipa}")
+
+# ================= TEST CASE SPESIAL (UNTUK MEMBUKTIKAN KE AKURATAN) =================
+st.markdown("---")
+st.caption(f"🧪 **Cek Logika Ekstrem**: Saat ini Rasio Air Laut = {mixing_ratio}%. Konsentrasi SO₄ tercampur = {so4_mix:.2f} mg/L. ")
+if mixing_ratio == 100 and so4_conc == 0:
+    st.success("🎯 **BUKTI AKURAT**: Meskipun Air Laut 100%, karena Konsentrasi Sulfat = 0, maka SO₄ tercampur = 0. Tidak ada reaksi, Massa Kerak = 0, jarum Gauge di 0, dan pipa AMAN. Inilah yang seharusnya terjadi!")
+elif mixing_ratio > 0 and so4_mix == 0:
+    st.success("✅ Konsentrasi Sulfat efektif = 0, sehingga tidak ada endapan BaSO₄/SrSO₄ yang terbentuk.")
+else:
+    st.info("🔍 Silakan coba ubah 'Rasio Air Laut' menjadi 100% dan 'Kons. SO₄' menjadi 0 untuk melihat gauge bergerak ke 0 secara otomatis.")
