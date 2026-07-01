@@ -1,159 +1,373 @@
 import streamlit as st
-import plotly.graph_objects as go
-import numpy as np
+import streamlit.components.v1 as components
 
-# ================= KONFIGURASI HALAMAN =================
-st.set_page_config(page_title="Simulasi Scaling BaSO4 & SrSO4", layout="wide")
-st.markdown("<h1 style='text-align: center;'>🔄 Presipitasi Barium Sulfat (BaSO₄)</h1>", unsafe_allow_html=True)
-st.markdown("---")
+# --- PENGATURAN HALAMAN ---
+st.set_page_config(page_title="Simulasi Presipitasi Akurat", layout="wide", initial_sidebar_state="collapsed")
+st.markdown("""
+    <style>
+        #MainMenu {visibility: hidden;}
+        footer {visibility: hidden;}
+        header {visibility: hidden;}
+        .block-container {padding-top: 1rem; max-width: 100%;}
+    </style>
+""", unsafe_allow_html=True)
 
-# ================= SIDEBAR INPUT =================
-with st.sidebar:
-    st.header("⚙️ Parameter Air Formasi & Injeksi")
-    ba_conc = st.number_input("Kons. Ba²⁺ (mg/L)", min_value=0.0, max_value=500.0, value=150.0, step=5.0)
-    sr_conc = st.number_input("Kons. Sr²⁺ (mg/L) [Kompetitor]", min_value=0.0, max_value=300.0, value=80.0, step=5.0)
-    so4_conc = st.number_input("Kons. SO₄²⁻ di Air Laut (mg/L)", min_value=0.0, max_value=3000.0, value=2000.0, step=50.0)
-    mixing_ratio = st.slider("Rasio Air Laut Injeksi (%)", min_value=0, max_value=100, value=30, step=1)
+# --- KODE INJEKSI HTML5 & JAVASCRIPT ---
+html_app = """
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <title>Simulasi Presipitasi Barium & Stronsium Sulfat</title>
+    <style>
+        :root {
+            --bg: #0e1117;
+            --panel: #1e212b;
+            --text: #fafafa;
+            --ba-color: #3b82f6;   /* Biru */
+            --sr-color: #a855f7;   /* Ungu */
+            --so4-color: #10b981;  /* Hijau */
+            --scale-color: #f59e0b; /* Orange/Kerak */
+        }
+        body {
+            background-color: var(--bg); color: var(--text);
+            font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px;
+            display: flex; flex-direction: column; align-items: center;
+        }
+        h2 { margin: 0 0 15px 0; font-weight: 600; text-align: center; font-size: 1.5rem; }
+        
+        .main-container {
+            width: 100%; max-width: 1200px; display: grid; grid-template-columns: 1fr 350px; gap: 20px;
+        }
+        
+        .canvas-section {
+            background: var(--panel); border-radius: 12px; padding: 15px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center;
+        }
+        canvas { background: #12141a; border-radius: 8px; width: 100%; max-width: 800px; }
+        
+        .control-panel {
+            background: var(--panel); border-radius: 12px; padding: 20px;
+            box-shadow: 0 8px 16px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px;
+        }
+        
+        .slider-group label { font-size: 0.85rem; color: #a1a1aa; display: flex; justify-content: space-between; margin-top: 10px;}
+        input[type=range] { width: 100%; margin: 8px 0; accent-color: #3b82f6; }
+        
+        .dashboard-box { background: #262a35; padding: 15px; border-radius: 8px; text-align: center;}
+        .status-clogged { color: #ef4444; font-weight: bold; font-size: 1.2rem; animation: blink 1s infinite; }
+        .status-warning { color: #f59e0b; font-weight: bold; font-size: 1.2rem; }
+        .status-safe { color: #10b981; font-weight: bold; font-size: 1.2rem; }
+        
+        @keyframes blink { 50% { opacity: 0.5; } }
+        
+        .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; font-size: 0.8rem; padding: 10px; background: #262a35; border-radius: 8px; margin-top:10px; width: 100%;}
+        .legend-item { display: flex; align-items: center; gap: 5px; }
+        .dot { width: 12px; height: 12px; border-radius: 50%; }
+        
+        button { background:#3f3f46; color:white; border:none; padding:10px; border-radius:5px; cursor:pointer; font-weight:bold; width: 100%; margin-top: 10px;}
+        button:hover { background: #52525b; }
+    </style>
+</head>
+<body>
+
+    <h2>Analisis Dinamis Penyumbatan Pipa (Scale Clogging)</h2>
     
-    st.markdown("---")
-    st.header("📏 Spesifikasi Pipa")
-    pipe_diameter_mm = st.number_input("Diameter Pipa (mm)", min_value=50, max_value=300, value=150, step=10)
-    pipe_length_m = st.number_input("Panjang Pipa (m)", min_value=10, max_value=1000, value=100, step=10)
+    <div class="main-container">
+        <div class="canvas-section">
+            <canvas id="simCanvas" width="800" height="500"></canvas>
+            
+            <div class="legend">
+                <div class="legend-item"><div class="dot" style="background:var(--ba-color);"></div> Air Formasi (Ba²⁺)</div>
+                <div class="legend-item"><div class="dot" style="background:var(--sr-color);"></div> Air Formasi (Sr²⁺)</div>
+                <div class="legend-item"><div class="dot" style="background:var(--so4-color);"></div> Air Laut (SO₄²⁻)</div>
+                <div class="legend-item"><div class="dot" style="background:var(--scale-color); border-radius:2px;"></div> Kerak (BaSO₄ / SrSO₄)</div>
+            </div>
+        </div>
+        
+        <div class="control-panel">
+            <h4 style="margin:0; border-bottom:1px solid #444; padding-bottom:10px; text-align:center;">Parameter Fluida</h4>
+            
+            <div class="slider-group">
+                <label>Rasio Injeksi Air Laut <span id="valRasio">50%</span></label>
+                <input type="range" id="slRasio" min="0" max="100" value="50">
+                <div style="font-size: 0.7rem; color: #71717a; text-align: right;">*(Air Formasi = <span id="valFormasi">50%</span>)*</div>
+                
+                <label>Kons. Sulfat (Air Laut) <span id="valSO4">100%</span></label>
+                <input type="range" id="slSO4" min="0" max="100" value="100">
+                <div style="font-size: 0.7rem; color: #71717a; text-align: right;">*(0% = Simulasi SRU Aktif)*</div>
 
-# ================= PERHITUNGAN KIMIA (STOIKIOMETRI) =================
-M_Ba, M_Sr, M_SO4 = 137.3, 87.6, 96.0
-M_BaSO4, M_SrSO4 = 233.4, 183.6
+                <label>Kons. Ba/Sr (Air Formasi) <span id="valBa">100%</span></label>
+                <input type="range" id="slBa" min="0" max="100" value="100">
+            </div>
+            
+            <div class="dashboard-box">
+                <div style="font-size: 0.85rem; color: #a1a1aa; margin-bottom: 5px;">Status Pipa Produksi</div>
+                <div id="lblStatus" class="status-safe">Aman (Mengalir)</div>
+                
+                <div style="display:flex; justify-content: space-between; margin-top: 15px; font-size: 0.8rem; border-top: 1px solid #444; padding-top: 10px;">
+                    <span>Ketebalan Kerak:</span>
+                    <span id="valThick" style="font-weight: bold; color: var(--scale-color);">0 mm</span>
+                </div>
+            </div>
+            
+            <button id="btnFlush">Flush Pipa (Reset)</button>
+        </div>
+    </div>
 
-# Konsentrasi setelah pencampuran
-ba_mix = ba_conc * (1 - mixing_ratio / 100.0)
-sr_mix = sr_conc * (1 - mixing_ratio / 100.0)
-so4_mix = so4_conc * (mixing_ratio / 100.0)
-
-# Mol per Liter
-mol_ba = ba_mix / M_Ba
-mol_sr = sr_mix / M_Sr
-mol_so4 = so4_mix / M_SO4
-
-# Endapan BaSO4 (prioritas)
-precip_ba_mol = min(mol_ba, mol_so4) * 0.98  # efisiensi 98%
-mol_so4_remaining = mol_so4 - precip_ba_mol
-
-# Endapan SrSO4 (menggunakan sisa sulfat)
-precip_sr_mol = min(mol_sr, max(0, mol_so4_remaining)) * 0.98
-
-# Massa endapan (mg/L)
-mass_ba = precip_ba_mol * M_BaSO4
-mass_sr = precip_sr_mol * M_SrSO4
-total_mass = mass_ba + mass_sr
-
-# ================= SKOR POTENSI KERAK (untuk Jarum Gauge) =================
-# Skala 0 - 50, merepresentasikan tingkat keparahan pengkerakan
-# Jika total_mass = 250 mg/L -> skor 50 (sangat parah)
-risk_score = min(50, total_mass * 0.2)  
-# Contoh: massa 25 mg/L -> skor 5, massa 125 mg/L -> skor 25, dst.
-
-# ================= DAMPAK KE PIPA =================
-r_initial = (pipe_diameter_mm / 1000) / 2
-# Asumsi volume kerak menempel merata
-volume_scale = (total_mass / 1e6) / 4000 * 1000  # per 1 m³ air
-area_lost = volume_scale / pipe_length_m
-delta_r = area_lost / (2 * np.pi * r_initial) if r_initial > 0 else 0
-new_r = max(0, r_initial - delta_r)
-new_diameter = new_r * 2 * 1000
-
-# Status Pipa
-if total_mass < 0.1:
-    status_pipa = "✅ Aman"
-    laju_kerak = "Tidak Ada"
-elif new_r > 0.8 * r_initial:
-    status_pipa = "⚠️ Waspada"
-    laju_kerak = "Rendah"
-elif new_r > 0.5 * r_initial:
-    status_pipa = "🔶 Mulai Menyumbat"
-    laju_kerak = "Sedang"
-else:
-    status_pipa = "🚨 SUMBAT KRITIS!"
-    laju_kerak = "Tinggi"
-
-# ================= LAYOUT UTAMA (MIRIP SS) =================
-col1, col2 = st.columns([2, 1.5], gap="medium")
-
-with col1:
-    # ----- GAUGE / SPEEDOMETER (BENTUK SEPERTI SS) -----
-    fig = go.Figure(go.Indicator(
-        domain={'x': [0, 1], 'y': [0, 1]},
-        value=round(risk_score, 1),
-        mode="gauge+number+delta",
-        title={'text': "Potensi Kerak ↑", 'font': {'size': 24, 'color': 'black'}},
-        delta={'reference': 40, 'increasing.color': "red", 'decreasing.color': "green"},
-        gauge={
-            'axis': {'range': [0, 50], 'tickwidth': 2, 'tickvals': [0, 10, 20, 30, 40, 50], 
-                     'tickfont': {'size': 14, 'color': 'black'}},
-            'bar': {'color': "#FF8C00"},
-            'bgcolor': "white",
-            'borderwidth': 2,
-            'bordercolor': "gray",
-            'steps': [
-                {'range': [0, 15], 'color': 'rgba(144, 238, 144, 0.7)'},   # Hijau
-                {'range': [15, 35], 'color': 'rgba(255, 255, 0, 0.6)'},    # Kuning
-                {'range': [35, 50], 'color': 'rgba(255, 100, 100, 0.7)'}   # Merah
-            ],
-            'threshold': {
-                'line': {'color': "black", 'width': 4},
-                'thickness': 0.8,
-                'value': round(risk_score, 1)
+<script>
+    const canvas = document.getElementById('simCanvas');
+    const ctx = canvas.getContext('2d');
+    
+    const slRasio = document.getElementById('slRasio');
+    const slSO4 = document.getElementById('slSO4');
+    const slBa = document.getElementById('slBa');
+    
+    // Geometri Pipa Y-Shape
+    const centerX = 400;
+    const mixY = 250;
+    const pipeWidth = 80;
+    
+    let particles = [];
+    let scaleThickness = 0; // Ketebalan kerak di dinding pipa (0 s/d 40)
+    let isClogged = false;
+    
+    class Particle {
+        constructor(type, startX, startY, tgtX, tgtY) {
+            this.type = type; // 'Ba', 'Sr', 'SO4', 'Scale'
+            this.x = startX;
+            this.y = startY;
+            this.tgtX = tgtX;
+            this.tgtY = tgtY;
+            
+            // Kecepatan menuju titik temu (mixY)
+            let angle = Math.atan2(tgtY - startY, tgtX - startX);
+            let speed = 2 + Math.random() * 1.5;
+            this.vx = Math.cos(angle) * speed;
+            this.vy = Math.sin(angle) * speed;
+            this.active = true;
+            this.isStuck = false;
+        }
+        
+        update() {
+            if (this.isStuck) return;
+            
+            // Gerakan sebelum titik temu
+            if (this.y < mixY) {
+                this.x += this.vx;
+                this.y += this.vy;
+                this.x += (Math.random() - 0.5) * 1.5; // Brownian
+            } else {
+                // Jatuh vertikal di pipa produksi
+                if(isClogged && this.type !== 'Scale') {
+                    // Jika buntu, partikel melambat dan berhenti
+                    this.vy *= 0.8;
+                } else {
+                    this.vy = 3 + Math.random() * 2;
+                }
+                
+                this.y += this.vy;
+                this.x += (Math.random() - 0.5) * 2;
+                
+                // Batas dinding pipa (menyempit karena kerak)
+                let leftWall = centerX - pipeWidth/2 + scaleThickness;
+                let rightWall = centerX + pipeWidth/2 - scaleThickness;
+                
+                if (this.x < leftWall) this.x = leftWall;
+                if (this.x > rightWall) this.x = rightWall;
+                
+                // Logika Scale Menempel
+                if (this.type === 'Scale' && !isClogged) {
+                    // Probabilitas menempel di dinding
+                    if (this.x <= leftWall + 5 || this.x >= rightWall - 5) {
+                        if(Math.random() < 0.1) {
+                            this.isStuck = true;
+                            if (scaleThickness < pipeWidth/2 - 5) {
+                                scaleThickness += 0.2; // Kerak bertambah tebal
+                            }
+                        }
+                    }
+                }
             }
         }
-    ))
-    fig.update_layout(height=350, margin=dict(l=30, r=30, t=50, b=30))
-    st.plotly_chart(fig, use_container_width=True)
-
-    # ----- BAGIAN BAWAH KOLOM KIRI: MASSA & KOMPOSISI -----
-    col_a, col_b, col_c = st.columns(3)
-    col_a.metric("⚖️ Total Massa Kerak", f"{total_mass:.2f} mg/L")
-    col_b.metric("🟠 Massa BaSO₄", f"{mass_ba:.2f} mg/L")
-    col_c.metric("🔵 Massa SrSO₄", f"{mass_sr:.2f} mg/L")
+        
+        draw() {
+            ctx.beginPath();
+            if(this.type === 'Scale') {
+                ctx.fillStyle = '#f59e0b';
+                ctx.rect(this.x - 3, this.y - 3, 6, 6);
+                ctx.fill();
+            } else {
+                ctx.arc(this.x, this.y, 3, 0, Math.PI*2);
+                if (this.type === 'Ba') ctx.fillStyle = '#3b82f6';
+                if (this.type === 'Sr') ctx.fillStyle = '#a855f7';
+                if (this.type === 'SO4') ctx.fillStyle = '#10b981';
+                ctx.fill();
+            }
+        }
+    }
     
-    # Indikator visual kecil untuk komposisi
-    if total_mass > 0.1:
-        st.progress(mass_ba / total_mass if total_mass > 0 else 0, text=f"Proporsi BaSO₄: {mass_ba/total_mass*100:.1f}%")
-    else:
-        st.info("Belum ada endapan yang terbentuk.")
-
-with col2:
-    st.subheader("📊 Status Operasi Pipa")
-    st.metric("Laju Kerak", laju_kerak)
-    st.metric("Status Pipa", status_pipa)
-    st.metric("Rasio Air Laut (%)", f"{mixing_ratio} %")
-    st.metric("Kons. Barium Tercampur", f"{ba_mix:.1f} mg/L")
-    st.metric("Kons. Sulfat Tercampur", f"{so4_mix:.1f} mg/L")
-    st.metric("Diameter Pipa Tersisa", f"{new_diameter:.2f} mm", 
-              delta=f"{new_diameter - pipe_diameter_mm:.2f} mm")
+    function drawBackground() {
+        ctx.fillStyle = '#12141a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+        
+        ctx.strokeStyle = '#4b5563'; ctx.lineWidth = 6;
+        ctx.lineJoin = 'round';
+        
+        // Outline Pipa Y
+        ctx.beginPath();
+        // Kiri Luar
+        ctx.moveTo(50, 50); ctx.lineTo(centerX - pipeWidth/2, mixY); ctx.lineTo(centerX - pipeWidth/2, 500);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        // Kanan Luar
+        ctx.moveTo(750, 50); ctx.lineTo(centerX + pipeWidth/2, mixY); ctx.lineTo(centerX + pipeWidth/2, 500);
+        ctx.stroke();
+        
+        ctx.beginPath();
+        // Tengah Dalam
+        ctx.moveTo(150, 50); ctx.lineTo(centerX, mixY - 50); ctx.lineTo(650, 50);
+        ctx.stroke();
+        
+        // Label Air
+        ctx.fillStyle = '#a1a1aa'; ctx.font = '14px Arial'; ctx.textAlign = 'center';
+        ctx.fillText('Air Formasi (Ba²⁺, Sr²⁺)', 150, 40);
+        ctx.fillText('Air Laut Injeksi (SO₄²⁻)', 650, 40);
+        
+        // Gambar Kerak (Scale) yang menempel
+        if (scaleThickness > 0) {
+            ctx.fillStyle = '#b45309'; // Warna kerak solid
+            // Kerak Kiri
+            ctx.fillRect(centerX - pipeWidth/2, mixY, scaleThickness, 500 - mixY);
+            // Kerak Kanan
+            ctx.fillRect(centerX + pipeWidth/2 - scaleThickness, mixY, scaleThickness, 500 - mixY);
+            
+            // Texture Kerak
+            ctx.strokeStyle = '#92400e'; ctx.lineWidth = 1;
+            ctx.beginPath();
+            for(let y=mixY; y<500; y+=10) {
+                ctx.moveTo(centerX - pipeWidth/2, y); ctx.lineTo(centerX - pipeWidth/2 + scaleThickness, y + 5);
+                ctx.moveTo(centerX + pipeWidth/2, y); ctx.lineTo(centerX + pipeWidth/2 - scaleThickness, y + 5);
+            }
+            ctx.stroke();
+        }
+    }
     
-    # Estimasi dampak aliran
-    if new_r > 0:
-        ratio_d = new_diameter / pipe_diameter_mm
-        flow_rate = ratio_d ** 4
-        st.metric("Perkiraan Laju Alir Tersisa", f"{flow_rate:.1%}")
-        if flow_rate < 0.3:
-            st.error("🛑 **PERINGATAN:** Produksi minyak sangat terhambat! Lakukan tindakan pencegahan scaling.")
-    else:
-        st.error("🚫 PIPA TERSAMBAT TOTAL - MINYAK TIDAK BISA MENGALIR!")
+    function spawnParticles() {
+        if (isClogged) return; // Jika tersumbat, aliran berhenti
+        
+        let rasioLaut = parseInt(slRasio.value) / 100;
+        let rasioFormasi = 1 - rasioLaut;
+        
+        let konsSO4 = parseInt(slSO4.value) / 100;
+        let konsBa = parseInt(slBa.value) / 100;
+        
+        // SPAWN KIRI (Air Formasi)
+        // Jumlah bergantung pada % Air Formasi dikali Konsentrasi Ba/Sr
+        let spawnKiri = rasioFormasi * konsBa;
+        if (Math.random() < spawnKiri * 0.8) {
+            let startX = 100 + (Math.random() - 0.5) * 50;
+            let type = Math.random() > 0.3 ? 'Ba' : 'Sr'; // 70% Ba, 30% Sr
+            particles.push(new Particle(type, startX, 50, centerX - 20, mixY));
+        }
+        
+        // SPAWN KANAN (Air Laut)
+        // Jumlah bergantung pada % Air Laut dikali Konsentrasi Sulfat
+        let spawnKanan = rasioLaut * konsSO4;
+        if (Math.random() < spawnKanan * 0.8) {
+            let startX = 700 + (Math.random() - 0.5) * 50;
+            particles.push(new Particle('SO4', startX, 50, centerX + 20, mixY));
+        }
+    }
+    
+    function processCollisions() {
+        for(let i = 0; i < particles.length; i++) {
+            let p1 = particles[i];
+            if(!p1.active || p1.isStuck || p1.type === 'Scale') continue;
+            
+            // Tabrakan hanya relevan jika partikel sudah mencapai titik temu (mixY)
+            if (p1.y > mixY - 30) {
+                for(let j = i + 1; j < particles.length; j++) {
+                    let p2 = particles[j];
+                    if(!p2.active || p2.isStuck || p2.type === 'Scale') continue;
+                    
+                    // Cek tabrakan antara Ba/Sr dengan SO4
+                    if ((p1.type === 'Ba' || p1.type === 'Sr') && p2.type === 'SO4' || 
+                        (p2.type === 'Ba' || p2.type === 'Sr') && p1.type === 'SO4') {
+                        
+                        let dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
+                        if(dist < 15) { // Radius reaksi
+                            p1.active = false;
+                            p2.active = false;
+                            // Menjadi Kerak (Scale)
+                            particles.push(new Particle('Scale', (p1.x+p2.x)/2, (p1.y+p2.y)/2, 0, 0));
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    function updateUI() {
+        let rLaut = slRasio.value;
+        document.getElementById('valRasio').innerText = rLaut + '%';
+        document.getElementById('valFormasi').innerText = (100 - rLaut) + '%';
+        document.getElementById('valSO4').innerText = slSO4.value + '%';
+        document.getElementById('valBa').innerText = slBa.value + '%';
+        
+        // Status Pipa
+        document.getElementById('valThick').innerText = (scaleThickness * 2).toFixed(1) + ' mm';
+        
+        let lblStatus = document.getElementById('lblStatus');
+        if (scaleThickness > 35) {
+            isClogged = true;
+            lblStatus.innerText = 'TERSUMBAT TOTAL!';
+            lblStatus.className = 'status-clogged';
+        } else if (scaleThickness > 15) {
+            isClogged = false;
+            lblStatus.innerText = 'WASPADA (Penyempitan)';
+            lblStatus.className = 'status-warning';
+        } else {
+            isClogged = false;
+            lblStatus.innerText = 'Aman (Mengalir)';
+            lblStatus.className = 'status-safe';
+        }
+    }
+    
+    function animate() {
+        drawBackground();
+        spawnParticles();
+        processCollisions();
+        
+        for(let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            if (p.active) {
+                p.update();
+                p.draw();
+                // Hapus jika keluar layar bawah
+                if (p.y > canvas.height && !p.isStuck) {
+                    particles.splice(i, 1);
+                }
+            } else {
+                particles.splice(i, 1);
+            }
+        }
+        
+        updateUI();
+        requestAnimationFrame(animate);
+    }
+    
+    document.getElementById('btnFlush').addEventListener('click', () => {
+        particles = [];
+        scaleThickness = 0;
+        isClogged = false;
+    });
+    
+    animate();
+</script>
+</body>
+</html>
+"""
 
-# ================= KOTAK INFORMASI TAMBAHAN (SEPERTI DI SS) =================
-st.markdown("---")
-st.subheader("🔬 Detail Air Formasi & Reaksi")
-info_col1, info_col2, info_col3 = st.columns(3)
-info_col1.info(f"🧪 **Air Formasi (Ba²⁺)** : {ba_conc} mg/L\n\n**Air Laut (SO₄²⁻)** : {so4_conc} mg/L")
-info_col2.success(f"✅ **Reaksi Prioritas**: Ba²⁺ + SO₄²⁻ → BaSO₄↓ (Oranye)\n\n🔹 **Reaksi Kompetitor**: Sr²⁺ + SO₄²⁻ → SrSO₄↓ (Biru)")
-info_col3.warning(f"⚡ **Efisiensi Pengendapan**: 98% (stoikiometris)\n\n📌 **Status Akhir**: {status_pipa}")
-
-# ================= TEST CASE SPESIAL (UNTUK MEMBUKTIKAN KE AKURATAN) =================
-st.markdown("---")
-st.caption(f"🧪 **Cek Logika Ekstrem**: Saat ini Rasio Air Laut = {mixing_ratio}%. Konsentrasi SO₄ tercampur = {so4_mix:.2f} mg/L. ")
-if mixing_ratio == 100 and so4_conc == 0:
-    st.success("🎯 **BUKTI AKURAT**: Meskipun Air Laut 100%, karena Konsentrasi Sulfat = 0, maka SO₄ tercampur = 0. Tidak ada reaksi, Massa Kerak = 0, jarum Gauge di 0, dan pipa AMAN. Inilah yang seharusnya terjadi!")
-elif mixing_ratio > 0 and so4_mix == 0:
-    st.success("✅ Konsentrasi Sulfat efektif = 0, sehingga tidak ada endapan BaSO₄/SrSO₄ yang terbentuk.")
-else:
-    st.info("🔍 Silakan coba ubah 'Rasio Air Laut' menjadi 100% dan 'Kons. SO₄' menjadi 0 untuk melihat gauge bergerak ke 0 secara otomatis.")
+components.html(html_app, height=750, scrolling=False)
