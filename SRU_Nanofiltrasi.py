@@ -89,6 +89,11 @@ html_app = """
 
         button { background:#38bdf8; color:#0f172a; border:none; padding:12px; border-radius:6px; cursor:pointer; font-weight:bold; width: 100%; margin-top: 4px; transition: 0.3s;}
         button:hover { background: #0284c7; color: white;}
+        button#btnChem { background: #a855f7; color: #fff; }
+        button#btnChem:hover { background: #7e22ce; }
+        button:disabled { opacity: 0.55; cursor: not-allowed; }
+        .chem-info { font-size: 0.72rem; color: #d8b4fe; margin-top: 8px; line-height: 1.4; }
+        .chem-status { font-size: 0.75rem; color: #e9d5ff; margin-top: 8px; display: none; font-weight: 600; }
 
         @media (max-width: 950px) {
             .main-container { grid-template-columns: 1fr; }
@@ -170,10 +175,25 @@ html_app = """
                         <div class="metric-title">Permeate Flux</div>
                         <div class="metric-value safe" id="valFlux">100%</div>
                     </div>
+                    <div class="metric-card" style="grid-column: span 2;">
+                        <div class="metric-title">Estimasi Umur Membran</div>
+                        <div class="metric-value safe" id="valLife">100%</div>
+                    </div>
                 </div>
             </div>
 
             <button id="btnCIP">CIP (Clean-in-Place) Backwash</button>
+
+            <div class="control-section" style="border-color:#7e22ce;">
+                <div class="control-title" style="color:#d8b4fe;">4. Perawatan Kimia (Chemical Cleaning)</div>
+                <div class="chem-info">
+                    Kombinasi <b>Biocide + Scale Inhibitor</b> berbasis <b>Phosphonate Complex</b> dengan
+                    pembawa <b>KCl</b> — melarutkan kerak CaSO₄ secara kimiawi (efikasi ≈68%) tanpa
+                    tekanan balik mekanis, sehingga membran lebih awet dibanding backwash biasa.
+                </div>
+                <button id="btnChem">Injeksi Kimia (Biocide + Scale Inhibitor)</button>
+                <div class="chem-status" id="chemStatus"></div>
+            </div>
         </div>
     </div>
 
@@ -220,6 +240,15 @@ html_app = """
     let so4Rejected = 0, so4Passed = 0;
     let solidBlocked = 0, solidPassed = 0;
     let flashEffect = 0;
+
+    // --- STATE PERAWATAN KIMIA (Biocide + Scale Inhibitor: Phosphonate Complex + KCl) ---
+    const CHEM_EFFICACY = 0.68;      // 68% kerak terlarut per siklus dosing
+    const CHEM_FRAMES = 260;         // durasi animasi dosing (~4.3 detik @60fps)
+    let membraneLife = 100;          // estimasi umur membran (0-100%)
+    let chemActive = false;
+    let chemFrame = 0;
+    let chemStartFouling = null;
+    let chemViz = [];                // partikel visual larutan kimia mengalir di atas membran
 
     class Particle {
         constructor(type, startX, startY) {
@@ -373,16 +402,18 @@ html_app = """
         ctx.beginPath(); ctx.moveTo(mEndX + 20, permTop); ctx.lineTo(mEndX, permTop); ctx.stroke();
 
         // --- CARTRIDGE FILTER (Pre-treatment 5.0 micron) ---
+        // Kotak dimulai di y=132 (bukan 100) supaya ada ruang bersih antara pipa & kotak
+        // untuk label "FEED" dan "PRE-TREATMENT" tanpa saling menumpuk.
         ctx.strokeStyle = '#eab308'; ctx.lineWidth = 3; ctx.setLineDash([4, 4]);
-        ctx.strokeRect(preStartX, 100, preEndX - preStartX, 130);
+        ctx.strokeRect(preStartX, 132, preEndX - preStartX, 98);
         ctx.setLineDash([]);
         ctx.fillStyle = 'rgba(234,179,8,0.06)';
-        ctx.fillRect(preStartX, 100, preEndX - preStartX, 130);
+        ctx.fillRect(preStartX, 132, preEndX - preStartX, 98);
         // garis mesh filter
         ctx.strokeStyle = 'rgba(234,179,8,0.4)'; ctx.lineWidth = 1;
         for (let i = 1; i < 6; i++) {
             let xx = preStartX + i * ((preEndX - preStartX) / 6);
-            ctx.beginPath(); ctx.moveTo(xx, 100); ctx.lineTo(xx, 230); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(xx, 132); ctx.lineTo(xx, 230); ctx.stroke();
         }
 
         // --- MEMBRAN 3 LAPIS (Thin-Film Composite Poliamida) ---
@@ -407,18 +438,39 @@ html_app = """
             flashEffect--;
         }
 
-        // --- LABEL (posisi & alignment dijaga agar tidak pernah terpotong tepi kanvas) ---
+        // Efek "kabut" ungu selama dosing kimia berlangsung, menandakan larutan menyapu permukaan membran
+        if (chemActive) {
+            ctx.fillStyle = 'rgba(168, 85, 247, 0.10)';
+            ctx.fillRect(mStartX, mY - 55, mEndX - mStartX, 65);
+        }
+
+        // Partikel visual larutan biocide + scale inhibitor
+        for (const c of chemViz) {
+            ctx.beginPath();
+            ctx.fillStyle = `rgba(192, 132, 252, ${Math.max(0, 1 - c.age / 140)})`;
+            ctx.arc(c.x, c.y, 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // --- LABEL (dipisah vertikal agar tidak saling menumpuk, & selalu dalam batas kanvas) ---
         ctx.font = 'bold 14px Arial'; ctx.fillStyle = COLORS.label;
         ctx.textAlign = 'left';
-        ctx.fillText('FEED (Air Laut Mentah)', 15, 92);
+        ctx.fillText('FEED (Air Laut Mentah)', 15, 88);
 
+        // Label "PRE-TREATMENT" diletakkan DI DALAM celah antara pipa (y=100) dan kotak
+        // filter (mulai y=132), jadi tidak lagi bertabrakan dengan label FEED di atasnya.
         ctx.font = 'bold 11px Arial'; ctx.fillStyle = '#eab308';
-        ctx.fillText('PRE-TREATMENT', preStartX, 96);
+        ctx.fillText('PRE-TREATMENT', preStartX, 122);
         ctx.font = '10px Arial'; ctx.fillStyle = COLORS.label;
         ctx.fillText('Cartridge Filter 5.0 µm', preStartX, 245);
 
-        ctx.font = '10px Arial'; ctx.fillStyle = COLORS.membrane;
-        ctx.fillText('Poliamida (200nm, pori 1nm)', mStartX, mY - 8);
+        // Nozzle & label injeksi kimia (hanya tampak saat dosing aktif)
+        if (chemActive) {
+            ctx.font = 'bold 10px Arial'; ctx.fillStyle = '#c084fc';
+            ctx.textAlign = 'center';
+            ctx.fillText('💉 Injeksi: Phosphonate + KCl', mStartX + 20, mY - 45);
+            ctx.textAlign = 'left';
+        }
 
         ctx.font = 'bold 13px Arial'; ctx.fillStyle = COLORS.label;
         ctx.textAlign = 'right';
@@ -441,6 +493,43 @@ html_app = """
             if (Math.random() < turbid / 260) {
                 particles.push(new Particle('Solid', 5, 150 + Math.random() * 60));
             }
+        }
+    }
+
+    function updateChemDosing() {
+        if (chemActive) {
+            chemFrame++;
+            let t = Math.min(1, chemFrame / CHEM_FRAMES);
+            // Kerak berkurang mengikuti kurva halus menuju target 68% terlarut
+            for (let i = 0; i < foulWidth; i++) {
+                foulingArray[i] = chemStartFouling[i] * (1 - CHEM_EFFICACY * t);
+            }
+            // Spawn partikel visual larutan kimia mengalir dari inlet menuju membran
+            if (chemFrame % 3 === 0) {
+                chemViz.push({ x: mStartX - 15 + Math.random() * 15, y: mY - 40 + Math.random() * 15, age: 0 });
+            }
+            let statusEl = document.getElementById('chemStatus');
+            statusEl.style.display = 'block';
+            statusEl.innerText = `Menyuntikkan Phosphonate + KCl... ${Math.round(t * 100)}%`;
+
+            if (t >= 1) {
+                chemActive = false;
+                statusEl.innerText = 'Selesai — kerak CaSO₄ berkurang ≈68% tanpa tekanan mekanis.';
+                let btn = document.getElementById('btnChem');
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                    btn.disabled = false;
+                }, 2500);
+            }
+        }
+
+        // Update posisi & umur partikel visual larutan kimia
+        for (let i = chemViz.length - 1; i >= 0; i--) {
+            let c = chemViz[i];
+            c.x += 3 + Math.random() * 1.5;
+            c.y += Math.sin(c.age * 0.15) * 0.6;
+            c.age++;
+            if (c.age > 140 || c.x > mEndX + 30) chemViz.splice(i, 1);
         }
     }
 
@@ -483,6 +572,10 @@ html_app = """
         let elFlux = document.getElementById('valFlux');
         elFlux.innerText = flux.toFixed(0) + '%';
         elFlux.className = 'metric-value ' + (flux > 70 ? 'safe' : (flux > 40 ? 'warn' : 'alert'));
+
+        let elLife = document.getElementById('valLife');
+        elLife.innerText = membraneLife.toFixed(1) + '%';
+        elLife.className = 'metric-value ' + (membraneLife > 70 ? 'safe' : (membraneLife > 40 ? 'warn' : 'alert'));
     }
 
     function animate() {
@@ -503,16 +596,29 @@ html_app = """
         // batasi jumlah partikel agar performa stabil
         if (particles.length > 900) particles.splice(0, particles.length - 900);
 
+        updateChemDosing();
         updateDashboard();
         requestAnimationFrame(animate);
     }
 
     document.getElementById('btnCIP').addEventListener('click', () => {
+        // Backwash mekanis: kerak hilang total & seketika, tapi membebani membran (wear)
         foulingArray.fill(0);
         so4Rejected = 0; so4Passed = 0;
         solidBlocked = 0; solidPassed = 0;
         particles = particles.filter(p => !p.isFouling && !p.isFiltered);
         flashEffect = 20;
+        membraneLife = Math.max(0, membraneLife - 1.4);
+    });
+
+    document.getElementById('btnChem').addEventListener('click', () => {
+        if (chemActive) return;
+        chemActive = true;
+        chemFrame = 0;
+        chemStartFouling = foulingArray.slice();
+        document.getElementById('btnChem').disabled = true;
+        // Dosing kimia jauh lebih lembut terhadap membran dibanding backwash mekanis
+        membraneLife = Math.max(0, membraneLife - 0.15);
     });
 
     animate();
@@ -557,4 +663,13 @@ untuk membersihkan kerak ini secara berkala.
 
 Coba turunkan slider **"Kondisi Filter Cartridge"** pada simulasi di atas — kamu akan lihat padatan yang
 lolos pre-treatment langsung mempercepat pembentukan kerak di membran.
+
+**5. Perawatan Kimia vs Backwash Mekanis**
+Selain **CIP (Clean-in-Place) Backwash** yang membersihkan kerak secara mekanis (cepat, tapi memberi
+tekanan balik ke membran), simulasi ini juga menyediakan tombol **Injeksi Kimia (Biocide + Scale
+Inhibitor)**. Kombinasi bahan kimia berbasis **phosphonate complex** dengan pembawa **KCl** ini melarutkan
+kerak Kalsium Sulfat (CaSO₄) secara kimiawi, dengan efikasi pelarutan sekitar **68%** per siklus dosing.
+Karena tidak melibatkan tekanan mekanis, metode ini jauh lebih ringan terhadap struktur membran —
+tercermin dari indikator **Estimasi Umur Membran** yang menurun jauh lebih lambat dibanding penggunaan
+backwash berulang kali.
     """)
