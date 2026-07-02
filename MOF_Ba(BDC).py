@@ -233,6 +233,8 @@ html_app = """
             this.vy = (Math.random() - 0.5) * 1.5;
             this.size = type === 'SO4' ? 4 : (type === 'Cl' ? 3.5 : 3);
             this.active = true;
+            this.attempts = 0;       // jumlah percobaan interaksi dengan node (khusus OH-)
+            this.maxAttempts = 5;    // setelah ini, ion tersapu arus tanpa interaksi lagi
         }
 
         update() {
@@ -247,6 +249,11 @@ html_app = """
             // Klorida adalah kompetitor pasif: ukuran hidratnya tidak cocok dengan pori MOF,
             // jadi selalu lolos tanpa berinteraksi (menggambarkan selektivitas terhadap sulfat).
             if (this.type === 'Cl') return;
+
+            // OH- yang sudah beberapa kali gagal menyerang (dibelokkan perlindungan sterik)
+            // akhirnya tersapu arus dan tidak lagi mencoba node lain -> mencegah akumulasi
+            // probabilitas blocking tanpa batas seiring lamanya simulasi berjalan.
+            if (this.type === 'OH' && this.attempts >= this.maxAttempts) return;
 
             if (this.x > zoneStartX - 30 && this.x < zoneEndX + 30) {
                 this.x += (Math.random() - 0.5);
@@ -265,6 +272,7 @@ html_app = """
                             spawnEnergyFlash(node.x, node.y);
                             break;
                         } else if (this.type === 'OH') {
+                            this.attempts++;
                             // Perlindungan sterik PCA: probabilitas OH- berhasil memblokir jauh lebih kecil
                             let blockProb = isPCA() ? 0.06 : 0.6;
                             if (Math.random() < blockProb) {
@@ -272,6 +280,7 @@ html_app = """
                             } else {
                                 this.vy *= -1.4; this.vx *= 0.6; // dibelokkan / gagal menyerang
                             }
+                            if (this.attempts >= this.maxAttempts) break;
                         }
                     }
                 }
