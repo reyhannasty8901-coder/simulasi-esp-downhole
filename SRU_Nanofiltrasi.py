@@ -353,4 +353,52 @@ html_app = """
         
         // Update UI Text
         let elRej = document.getElementById('valRej');
-        elRej.innerText = rejectionRate.toFixed(1)
+        elRej.innerText = rejectionRate.toFixed(1) + '%';
+        elRej.className = rejectionRate > 95 ? 'metric-value safe' : (rejectionRate > 80 ? 'metric-value warn' : 'metric-value alert');
+        
+        let elFoul = document.getElementById('valFoul');
+        elFoul.innerText = totalFouling.toFixed(1) + '%';
+        elFoul.className = totalFouling > 60 ? 'metric-value alert' : (totalFouling > 30 ? 'metric-value warn' : 'metric-value safe');
+        
+        let elFlux = document.getElementById('valFlux');
+        elFlux.innerText = flux.toFixed(0) + '%';
+        elFlux.className = flux > 70 ? 'metric-value safe' : (flux > 40 ? 'metric-value warn' : 'metric-value alert');
+    }
+    
+    function animate() {
+        drawMembraneSystem();
+        processSystem();
+        
+        for(let i = particles.length - 1; i >= 0; i--) {
+            let p = particles[i];
+            if (p.active) {
+                p.update();
+                p.draw();
+                // Hapus jika sudah melewati layar kanan
+                if (p.x > canvas.width + 10) particles.splice(i, 1);
+            } else {
+                particles.splice(i, 1);
+            }
+        }
+        
+        updateDasbor();
+        requestAnimationFrame(animate);
+    }
+    
+    // Tombol Backwash (CIP - Clean In Place)
+    document.getElementById('btnCIP').addEventListener('click', () => {
+        foulingArray.fill(0);
+        so4Rejected = 0; so4Passed = 0; // Reset metrik agar hitungan akurat lagi
+        // Ubah partikel fouling yang nyangkut jadi air biasa atau hilangkan
+        particles = particles.filter(p => !p.isFouling); 
+        flashEffect = 20; 
+    });
+    
+    animate();
+</script>
+</body>
+</html>
+"""
+
+# Jangan lupa bagian bawah ini sangat penting!
+components.html(html_app, height=850, scrolling=False)
