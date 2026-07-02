@@ -84,6 +84,13 @@ html_app = """
         button:hover { background: #0369a1; }
         .btn-danger { background:#ef4444; }
         .btn-danger:hover { background: #b91c1c; }
+        .flush-toast {
+            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+            background: #10b981; color: #06281c; font-weight: bold; padding: 8px 16px;
+            border-radius: 6px; opacity: 0; transition: opacity 0.4s; pointer-events: none;
+            font-size: 0.85rem;
+        }
+        .flush-toast.show { opacity: 1; }
     </style>
 </head>
 <body>
@@ -91,7 +98,8 @@ html_app = """
     <h2>Kinetika Presipitasi & Dinamika Transport Fluida</h2>
     
     <div class="main-container">
-        <div class="canvas-section">
+        <div class="canvas-section" style="position: relative;">
+            <div id="flushToast" class="flush-toast">✅ Pipa berhasil dibersihkan (Acid Wash)</div>
             <canvas id="simCanvas" width="850" height="520"></canvas>
             
             <div class="legend">
@@ -150,7 +158,7 @@ html_app = """
                 </div>
             </div>
             
-            <button id="btnFlush" class="btn-danger">ACID WASH (Reset Pipa)</button>
+            <button id="btnFlush" class="btn-danger">🧹 ACID WASH (Bersihkan Pipa)</button>
         </div>
     </div>
 
@@ -166,15 +174,16 @@ html_app = """
     
     // Geometry
     const cX = 425; // Center X
-    const mY = 250; // Mix Y
+    const mY = 250; // Mix Y (awal zona pencampuran/pipa produksi)
     const pW = 100; // Pipe Width Max
+    const pipeBottom = 520;
     
     let particles = [];
     // ARRAY KETEBALAN KERAK SEPANJANG PIPA (Index = Koordinat Y)
     let scaleArrL = new Array(600).fill(0); 
     let scaleArrR = new Array(600).fill(0);
     
-    let totalBlockage = 0; // Persentase maksimum
+    let totalBlockage = 0; // Persentase maksimum di sepanjang pipa
     let flashEffect = 0; // Animasi saat reset
     
     class Particle {
@@ -191,60 +200,76 @@ html_app = """
             this.vy = Math.sin(angle) * speed;
             this.active = true;
             this.isStuck = false;
+            // PARTIKEL 'Scale' LANGSUNG DIANGGAP SUDAH BERADA DI DALAM PIPA PRODUKSI,
+            // sehingga selalu memakai logika deposisi (tahap 2), bukan logika terbang menuju target lama.
+            this.inPipe = (type === 'Scale');
+            if (this.inPipe && this.y < mY) this.y = mY;
         }
         
         update(flowVelocity) {
             if (this.isStuck) return;
             
-            // Tahap 1: Aliran masuk menuju pencampuran
-            if (this.y < mY - 20) {
+            // Tahap 1: Aliran masuk menuju zona pencampuran (hanya untuk ion, bukan kerak)
+            if (!this.inPipe && this.y < mY - 20) {
                 this.x += this.vx; this.y += this.vy;
                 this.x += (Math.random() - 0.5) * 1.0; 
+                if (this.y >= mY - 20) this.inPipe = true;
             } 
-            // Tahap 2: Zona Campur & Aliran Bawah (Produksi vertikal)
+            // Tahap 2: Zona Campur & Pipa Produksi (vertikal ke bawah)
             else {
-                let velocityBoost = 1 + (totalBlockage / 100) * 2; 
-                this.vy = (flowVelocity * 0.1) * velocityBoost + Math.random();
-                
-                // Hentikan jika buntu total
-                if (totalBlockage >= 95 && this.type !== 'Scale') this.vy *= 0.1;
-                
-                this.y += this.vy;
-                this.x += (Math.random() - 0.5) * 3;
-                
-                // Deteksi dinding bergerigi dari array kerak
+                this.inPipe = true;
+
+                // Deteksi lebar pipa efektif di titik ini (setelah tersumbat kerak)
                 let yIdx = Math.floor(this.y);
                 if (yIdx < mY) yIdx = mY;
                 if (yIdx >= 600) yIdx = 599;
 
+                let localBlock = scaleArrL[yIdx] + scaleArrR[yIdx];
+                let localRatio = Math.max(0, 1 - (localBlock / pW)); // 1 = lancar, 0 = buntu total
+
+                // Semakin sempit pipa di titik ini, semakin lambat alirannya (efek tersumbat nyata)
+                let baseSpeed = (flowVelocity * 0.08) + 0.4;
+                this.vy = baseSpeed * Math.max(localRatio, 0.03) + Math.random() * 0.4;
+
+                this.y += this.vy;
+                this.x += (Math.random() - 0.5) * 3;
+                
+                // Dinding bergerigi sesuai ketebalan kerak yang sudah menumpuk
                 let wallL = cX - pW/2 + scaleArrL[yIdx];
                 let wallR = cX + pW/2 - scaleArrR[yIdx];
                 
                 if (this.x < wallL) this.x = wallL;
                 if (this.x > wallR) this.x = wallR;
                 
-                // Logika Deposisi Dinamis (Membangun kerak bergerigi)
-                if (this.type === 'Scale' && totalBlockage < 100) {
-                    if (this.x <= wallL + 5) {
-                        if (Math.random() < 0.2) {
+                // Logika Deposisi Dinamis (Membangun kerak bergerigi, MENUMPUK dan PERMANEN)
+                if (this.type === 'Scale' && localRatio > 0.02) {
+                    if (this.x <= wallL + 6) {
+                        if (Math.random() < 0.35) {
                             this.isStuck = true;
-                            // Tambah ketebalan lokal dan sebarkan sedikit ke area sekitar
                             for(let i = Math.max(mY, yIdx-10); i < Math.min(600, yIdx+10); i++) {
                                 let dist = Math.abs(yIdx - i);
-                                let increment = Math.max(0, (10 - dist) * 0.05);
-                                if (scaleArrL[i] + increment < pW/2 - 2) scaleArrL[i] += increment;
+                                let increment = Math.max(0, (10 - dist) * 0.07);
+                                if (scaleArrL[i] + increment < pW/2 - 1) scaleArrL[i] += increment;
+                                else scaleArrL[i] = pW/2 - 1;
                             }
                         }
-                    } else if (this.x >= wallR - 5) {
-                        if (Math.random() < 0.2) {
+                    } else if (this.x >= wallR - 6) {
+                        if (Math.random() < 0.35) {
                             this.isStuck = true;
                             for(let i = Math.max(mY, yIdx-10); i < Math.min(600, yIdx+10); i++) {
                                 let dist = Math.abs(yIdx - i);
-                                let increment = Math.max(0, (10 - dist) * 0.05);
-                                if (scaleArrR[i] + increment < pW/2 - 2) scaleArrR[i] += increment;
+                                let increment = Math.max(0, (10 - dist) * 0.07);
+                                if (scaleArrR[i] + increment < pW/2 - 1) scaleArrR[i] += increment;
+                                else scaleArrR[i] = pW/2 - 1;
                             }
                         }
                     }
+                }
+
+                // Jika pipa sudah nyaris buntu total (>=97%), kerak yang tidak sempat menempel
+                // tetap "mengambang" pelan di tempat alih-alih hilang, memberi kesan pipa benar-benar tersumbat.
+                if (totalBlockage >= 97 && this.type !== 'Scale') {
+                    this.vy *= 0.05;
                 }
             }
         }
@@ -270,37 +295,53 @@ html_app = """
         ctx.fillStyle = '#12141a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
         
         ctx.strokeStyle = '#475569'; ctx.lineWidth = 8; ctx.lineJoin = 'round';
-        ctx.beginPath(); ctx.moveTo(70, 50); ctx.lineTo(cX - pW/2, mY); ctx.lineTo(cX - pW/2, 520); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(780, 50); ctx.lineTo(cX + pW/2, mY); ctx.lineTo(cX + pW/2, 520); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(70, 50); ctx.lineTo(cX - pW/2, mY); ctx.lineTo(cX - pW/2, pipeBottom); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(780, 50); ctx.lineTo(cX + pW/2, mY); ctx.lineTo(cX + pW/2, pipeBottom); ctx.stroke();
         ctx.beginPath(); ctx.moveTo(200, 50); ctx.lineTo(cX, mY - 60); ctx.lineTo(650, 50); ctx.stroke();
         
         ctx.fillStyle = '#94a3b8'; ctx.font = '13px Arial'; ctx.textAlign = 'center';
         ctx.fillText('Air Formasi', 135, 40); ctx.fillText('Air Laut / Injeksi', 715, 40); ctx.fillText('Sumur Produksi', cX, 510);
         
-        // Render Kerak Dinamis
+        // Render Kerak Dinamis (terus terakumulasi, hanya hilang saat Acid Wash)
         ctx.fillStyle = '#92400e'; 
         ctx.beginPath(); ctx.moveTo(cX - pW/2, mY);
-        for(let y = mY; y <= 520; y++) ctx.lineTo(cX - pW/2 + scaleArrL[y], y);
-        ctx.lineTo(cX - pW/2, 520); ctx.fill();
+        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX - pW/2 + scaleArrL[y], y);
+        ctx.lineTo(cX - pW/2, pipeBottom); ctx.fill();
         
         ctx.beginPath(); ctx.moveTo(cX + pW/2, mY);
-        for(let y = mY; y <= 520; y++) ctx.lineTo(cX + pW/2 - scaleArrR[y], y);
-        ctx.lineTo(cX + pW/2, 520); ctx.fill();
+        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX + pW/2 - scaleArrR[y], y);
+        ctx.lineTo(cX + pW/2, pipeBottom); ctx.fill();
         
         // Garis batas kerak
         ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
         ctx.beginPath(); ctx.moveTo(cX - pW/2 + scaleArrL[mY], mY);
-        for(let y = mY; y <= 520; y++) ctx.lineTo(cX - pW/2 + scaleArrL[y], y);
+        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX - pW/2 + scaleArrL[y], y);
         ctx.stroke();
         
         ctx.beginPath(); ctx.moveTo(cX + pW/2 - scaleArrR[mY], mY);
-        for(let y = mY; y <= 520; y++) ctx.lineTo(cX + pW/2 - scaleArrR[y], y);
+        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX + pW/2 - scaleArrR[y], y);
         ctx.stroke();
 
-        // Animasi kilat saat di reset
+        // Titik tersumbat total (choke point) ditandai merah berkedip
+        if (totalBlockage >= 90) {
+            let chokeY = mY;
+            let maxV = -1;
+            for (let y = mY; y <= pipeBottom; y++) {
+                let v = scaleArrL[y] + scaleArrR[y];
+                if (v > maxV) { maxV = v; chokeY = y; }
+            }
+            ctx.strokeStyle = `rgba(239,68,68,${0.5 + 0.5*Math.sin(Date.now()/150)})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(cX - pW/2 + scaleArrL[chokeY] - 4, chokeY);
+            ctx.lineTo(cX + pW/2 - scaleArrR[chokeY] + 4, chokeY);
+            ctx.stroke();
+        }
+
+        // Animasi kilat hijau saat baru saja di-flush/reset
         if (flashEffect > 0) {
             ctx.fillStyle = `rgba(16, 185, 129, ${flashEffect / 20})`;
-            ctx.fillRect(cX - pW/2, mY, pW, 520 - mY);
+            ctx.fillRect(cX - pW/2, mY, pW, pipeBottom - mY);
             flashEffect--;
         }
     }
@@ -318,12 +359,16 @@ html_app = """
             siValue = (mixBa * mixSO4) / 5000000; 
         }
         
-        if (flowF > 0 && Math.random() < (flowF / 100)) {
+        // Laju kemunculan partikel ion juga sedikit dihambat bila pipa sudah hampir buntu,
+        // merepresentasikan tekanan balik (backpressure) dari sumbatan.
+        let spawnDamping = totalBlockage >= 90 ? 0.3 : 1;
+
+        if (flowF > 0 && Math.random() < (flowF / 100) * spawnDamping) {
             let type = Math.random() > 0.25 ? 'Ba' : 'Sr'; 
             particles.push(new Particle(type, 135 + (Math.random() - 0.5) * 60, 50, cX - 25, mY, true));
         }
         
-        if (flowL > 0 && Math.random() < (flowL / 100)) {
+        if (flowL > 0 && Math.random() < (flowL / 100) * spawnDamping) {
             particles.push(new Particle('SO4', 715 + (Math.random() - 0.5) * 60, 50, cX + 25, mY, false));
         }
         
@@ -331,17 +376,17 @@ html_app = """
         if (nucleationProb > 0) {
             for(let i = 0; i < particles.length; i++) {
                 let p1 = particles[i];
-                if(!p1.active || p1.isStuck || p1.type === 'Scale' || p1.y < mY - 30) continue;
+                if(!p1.active || p1.isStuck || p1.type === 'Scale' || p1.y < mY - 20) continue;
                 
                 for(let j = i + 1; j < particles.length; j++) {
                     let p2 = particles[j];
-                    if(!p2.active || p2.isStuck || p2.type === 'Scale' || p2.y < mY - 30) continue;
+                    if(!p2.active || p2.isStuck || p2.type === 'Scale' || p2.y < mY - 20) continue;
                     
                     if ((p1.isLeftFlow !== p2.isLeftFlow) && p1.type !== p2.type) {
                         let dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
-                        if(dist < 18 && Math.random() < nucleationProb) {
+                        if(dist < 20 && Math.random() < nucleationProb) {
                             p1.active = false; p2.active = false;
-                            particles.push(new Particle('Scale', (p1.x+p2.x)/2, (p1.y+p2.y)/2, 0, 0, false));
+                            particles.push(new Particle('Scale', (p1.x+p2.x)/2, Math.max((p1.y+p2.y)/2, mY), 0, 0, false));
                             break;
                         }
                     }
@@ -357,15 +402,11 @@ html_app = """
         document.getElementById('valFlowL').innerText = slFlowL.value + ' bbl/d';
         document.getElementById('valSO4').innerText = slSO4.value + ' ppm';
         
-        // Cari titik penyumbatan maksimum (choke point)
+        // Cari titik penyumbatan maksimum (choke point) di sepanjang pipa
         let maxBlockagePoint = 0;
-        let maxThicknessValue = 0;
-        for (let i = mY; i <= 520; i++) {
+        for (let i = mY; i <= pipeBottom; i++) {
             let localBlockage = scaleArrL[i] + scaleArrR[i];
-            if (localBlockage > maxBlockagePoint) {
-                maxBlockagePoint = localBlockage;
-                maxThicknessValue = localBlockage;
-            }
+            if (localBlockage > maxBlockagePoint) maxBlockagePoint = localBlockage;
         }
         
         totalBlockage = (maxBlockagePoint / pW) * 100;
@@ -382,7 +423,7 @@ html_app = """
         else if (flowData.siValue < 1.5) { valSI.style.color = '#f59e0b'; lblSI.innerText = 'Saturated (Waspada)'; }
         else { valSI.style.color = '#ef4444'; lblSI.innerText = 'Supersaturated (Presipitasi Masif)'; }
         
-        document.getElementById('valThick').innerText = maxThicknessValue.toFixed(1) + ' mm';
+        document.getElementById('valThick').innerText = maxBlockagePoint.toFixed(1) + ' mm';
         
         let elBlock = document.getElementById('valBlock');
         elBlock.innerText = totalBlockage.toFixed(0) + '%';
@@ -413,12 +454,17 @@ html_app = """
     }
     
     document.getElementById('btnFlush').addEventListener('click', () => {
-        // Reset seluruh variabel
+        // Reset seluruh variabel: kerak, partikel, dan indikator penyumbatan
         particles = [];
         scaleArrL.fill(0);
         scaleArrR.fill(0);
         totalBlockage = 0;
-        flashEffect = 20; // Trigger animasi visual
+        flashEffect = 20; // Trigger animasi kilat hijau
+
+        // Tampilkan notifikasi singkat bahwa pipa sudah dibersihkan
+        let toast = document.getElementById('flushToast');
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 1800);
     });
     
     animate();
