@@ -185,6 +185,21 @@ html_app = """
     
     let totalBlockage = 0; // Persentase maksimum di sepanjang pipa
     let flashEffect = 0; // Animasi saat reset
+
+    // Menumpuk kerak sebagai "medan pegunungan" yang bergerigi/tidak rata,
+    // bukan lengkungan halus — meniru tampilan referensi (gray jagged terrain).
+    function depositTerrain(arr, centerIdx, amount) {
+        let width = 4 + Math.floor(Math.random() * 8); // lebar gundukan 4-11 px, acak tiap deposit (mirip puncak pegunungan)
+        for (let i = centerIdx - width; i <= centerIdx + width; i++) {
+            if (i < mY || i >= 600) continue;
+            let dist = Math.abs(i - centerIdx);
+            let falloff = Math.max(0, 1 - dist / (width + 1));
+            let jaggedJitter = 0.5 + Math.random() * 1.0; // bikin puncak tidak rata seperti pegunungan
+            let inc = amount * falloff * jaggedJitter;
+            if (arr[i] + inc < pW/2 - 1) arr[i] += inc;
+            else arr[i] = pW/2 - 1;
+        }
+    }
     
     class Particle {
         constructor(type, startX, startY, tgtX, tgtY, isLeftFlow) {
@@ -231,43 +246,44 @@ html_app = """
                 let baseSpeed = (flowVelocity * 0.08) + 0.4;
                 this.vy = baseSpeed * Math.max(localRatio, 0.03) + Math.random() * 0.4;
 
-                this.y += this.vy;
-                this.x += (Math.random() - 0.5) * 3;
-                
                 // Dinding bergerigi sesuai ketebalan kerak yang sudah menumpuk
                 let wallL = cX - pW/2 + scaleArrL[yIdx];
                 let wallR = cX + pW/2 - scaleArrR[yIdx];
-                
+
+                if (this.type === 'Scale') {
+                    // Kerak TIDAK terus mengalir mengikuti arus seperti ion — ia hanya
+                    // melayang PELAN turun sambil "dituntun" mendekati dinding terdekat,
+                    // lalu segera MENEMPEL PERMANEN (mirip referensi: bergerigi & bertahap).
+                    this.vy *= 0.35; // jatuh jauh lebih lambat daripada ion
+                    let midX = (wallL + wallR) / 2;
+                    let towardWall = (this.x < midX) ? -1 : 1;
+                    this.x += towardWall * (0.5 + Math.random() * 0.6); // dituntun pelan ke dinding
+                    this.x += (Math.random() - 0.5) * 0.6; // sedikit getaran acak, bukan aliran deras
+                } else {
+                    this.x += (Math.random() - 0.5) * 3;
+                }
+
+                this.y += this.vy;
+
                 if (this.x < wallL) this.x = wallL;
                 if (this.x > wallR) this.x = wallR;
                 
-                // Logika Deposisi Dinamis (Membangun kerak bergerigi, MENUMPUK dan PERMANEN)
+                // Logika Deposisi: begitu kerak menyentuh dinding, ia LANGSUNG menyatu
+                // menjadi bagian medan (terrain) yang bergerigi lalu hilang dari daftar
+                // partikel aktif — sehingga tidak ada tumpukan kerak "mengambang" tanpa henti.
                 if (this.type === 'Scale' && localRatio > 0.02) {
-                    if (this.x <= wallL + 6) {
-                        if (Math.random() < 0.35) {
+                    if (this.x <= wallL + 3 || this.x >= wallR - 3) {
+                        if (Math.random() < 0.5) {
                             this.isStuck = true;
-                            for(let i = Math.max(mY, yIdx-10); i < Math.min(600, yIdx+10); i++) {
-                                let dist = Math.abs(yIdx - i);
-                                let increment = Math.max(0, (10 - dist) * 0.07);
-                                if (scaleArrL[i] + increment < pW/2 - 1) scaleArrL[i] += increment;
-                                else scaleArrL[i] = pW/2 - 1;
-                            }
-                        }
-                    } else if (this.x >= wallR - 6) {
-                        if (Math.random() < 0.35) {
-                            this.isStuck = true;
-                            for(let i = Math.max(mY, yIdx-10); i < Math.min(600, yIdx+10); i++) {
-                                let dist = Math.abs(yIdx - i);
-                                let increment = Math.max(0, (10 - dist) * 0.07);
-                                if (scaleArrR[i] + increment < pW/2 - 1) scaleArrR[i] += increment;
-                                else scaleArrR[i] = pW/2 - 1;
-                            }
+                            this.active = false; // langsung menyatu ke medan, bukan menumpuk sbg partikel
+                            let arr = (this.x <= wallL + 3) ? scaleArrL : scaleArrR;
+                            depositTerrain(arr, yIdx, 0.6); // pertambahan kecil = penumpukan bertahap/pelan
                         }
                     }
                 }
 
-                // Jika pipa sudah nyaris buntu total (>=97%), kerak yang tidak sempat menempel
-                // tetap "mengambang" pelan di tempat alih-alih hilang, memberi kesan pipa benar-benar tersumbat.
+                // Jika pipa sudah nyaris buntu total (>=97%), aliran ion praktis berhenti,
+                // memberi kesan pipa benar-benar tersumbat.
                 if (totalBlockage >= 97 && this.type !== 'Scale') {
                     this.vy *= 0.05;
                 }
@@ -372,7 +388,7 @@ html_app = """
             particles.push(new Particle('SO4', 715 + (Math.random() - 0.5) * 60, 50, cX + 25, mY, false));
         }
         
-        let nucleationProb = siValue > 1 ? Math.min(siValue * 0.15, 0.9) : 0;
+        let nucleationProb = siValue > 1 ? Math.min(siValue * 0.08, 0.55) : 0;
         if (nucleationProb > 0) {
             for(let i = 0; i < particles.length; i++) {
                 let p1 = particles[i];
