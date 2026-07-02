@@ -83,7 +83,7 @@ html_app = """
     .controls { margin-top: 22px; display: flex; flex-direction: column; gap: 16px; }
     .controls-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
     .slider-block { display: flex; align-items: center; gap: 12px; }
-    .slider-block .lbl { font-size: 0.82rem; color: #c7cad6; width: 130px; flex-shrink: 0; }
+    .slider-block .lbl { font-size: 0.8rem; color: #c7cad6; width: 155px; flex-shrink: 0; }
     .slider-block input[type=range] { flex: 1; accent-color: var(--accent); }
     .val-box {
         min-width: 40px; padding: 4px 8px; border: 1px solid var(--border);
@@ -137,7 +137,7 @@ html_app = """
                 <span class="val-box" id="valRasio">50</span>
             </div>
             <div class="slider-block">
-                <span class="lbl">Kons. Barium</span>
+                <span class="lbl">Konsentrasi Ba²⁺/Sr²⁺</span>
                 <input type="range" id="slBa" min="0" max="100" value="50">
                 <span class="val-box" id="valBaSl">50</span>
             </div>
