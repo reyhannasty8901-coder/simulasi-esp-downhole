@@ -2,7 +2,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 # --- PENGATURAN HALAMAN ---
-st.set_page_config(page_title="Simulasi Presipitasi Skala Industri", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="Presipitasi Barium Sulfat (BaSO4)", layout="wide", initial_sidebar_state="collapsed")
 st.markdown("""
     <style>
         #MainMenu {visibility: hidden;}
@@ -17,476 +17,439 @@ html_app = """
 <!DOCTYPE html>
 <html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <title>Kinetika Presipitasi Scale Barium Sulfat</title>
-    <style>
-        :root {
-            --bg: #0e1117;
-            --panel: #1e212b;
-            --text: #fafafa;
-            --ba-color: #3b82f6;   
-            --sr-color: #a855f7;   
-            --so4-color: #10b981;  
-            --scale-color: #f59e0b; 
-        }
-        body {
-            background-color: var(--bg); color: var(--text);
-            font-family: 'Segoe UI', sans-serif; margin: 0; padding: 10px;
-            display: flex; flex-direction: column; align-items: center;
-        }
-        h2 { margin: 0 0 15px 0; font-weight: 600; text-align: center; font-size: 1.4rem; color: #e2e8f0; }
-        
-        .main-container {
-            width: 100%; max-width: 1300px; display: grid; grid-template-columns: 1fr 380px; gap: 20px;
-        }
-        
-        .canvas-section {
-            background: var(--panel); border-radius: 12px; padding: 15px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.5); display: flex; flex-direction: column; align-items: center;
-        }
-        canvas { background: #12141a; border-radius: 8px; width: 100%; max-width: 850px; }
-        
-        .control-panel {
-            background: var(--panel); border-radius: 12px; padding: 20px;
-            box-shadow: 0 8px 16px rgba(0,0,0,0.5); display: flex; flex-direction: column; gap: 15px;
-            height: 100%; overflow-y: auto;
-        }
-        
-        .control-section {
-            border: 1px solid #334155; padding: 12px; border-radius: 8px; background: #1e293b;
-        }
-        .control-title {
-            font-size: 0.9rem; font-weight: bold; color: #94a3b8; margin-bottom: 10px; border-bottom: 1px solid #475569; padding-bottom: 5px;
-        }
-        
-        .slider-group label { font-size: 0.85rem; color: #cbd5e1; display: flex; justify-content: space-between; margin-top: 8px;}
-        input[type=range] { width: 100%; margin: 5px 0 10px 0; accent-color: #3b82f6; }
-        
-        /* Dasbor Metrik */
-        .metrics-grid {
-            display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 5px;
-        }
-        .metric-card {
-            background: #0f172a; padding: 10px; border-radius: 6px; text-align: center; border: 1px solid #334155;
-        }
-        .metric-title { font-size: 0.75rem; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.5px;}
-        .metric-value { font-size: 1.2rem; font-weight: bold; margin-top: 5px; color: #f8fafc; }
-        .alert { color: #ef4444 !important; animation: pulse 1s infinite; }
-        .safe { color: #10b981 !important; }
-        
-        @keyframes pulse { 0% { opacity: 1; } 50% { opacity: 0.5; } 100% { opacity: 1; } }
-        
-        .legend { display: flex; flex-wrap: wrap; justify-content: center; gap: 15px; font-size: 0.8rem; padding: 10px; background: #1e293b; border-radius: 8px; margin-top:15px; width: 100%; border: 1px solid #334155;}
-        .legend-item { display: flex; align-items: center; gap: 5px; }
-        .dot { width: 12px; height: 12px; border-radius: 50%; }
-        
-        button { background:#0284c7; color:white; border:none; padding:12px; border-radius:6px; cursor:pointer; font-weight:bold; width: 100%; margin-top: 10px; transition: 0.3s;}
-        button:hover { background: #0369a1; }
-        .btn-danger { background:#ef4444; }
-        .btn-danger:hover { background: #b91c1c; }
-        .flush-toast {
-            position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
-            background: #10b981; color: #06281c; font-weight: bold; padding: 8px 16px;
-            border-radius: 6px; opacity: 0; transition: opacity 0.4s; pointer-events: none;
-            font-size: 0.85rem;
-        }
-        .flush-toast.show { opacity: 1; }
-    </style>
+<meta charset="UTF-8">
+<title>Presipitasi Barium Sulfat (BaSO4)</title>
+<style>
+    :root {
+        --bg: #0e1017;
+        --card: #14161f;
+        --panel: #1a1d29;
+        --border: #2a2e3d;
+        --text: #f4f5f7;
+        --muted: #8b90a3;
+        --ba-color: #3b82f6;
+        --so4-color: #34d399;
+        --scale-color: #f5a623;
+        --accent: #6366f1;
+        --safe: #34d399;
+        --warn: #f5a623;
+        --danger: #ef4444;
+    }
+    * { box-sizing: border-box; }
+    body {
+        background: var(--bg); color: var(--text); margin: 0; padding: 18px;
+        font-family: 'Segoe UI', Roboto, sans-serif;
+        display: flex; justify-content: center;
+    }
+    .card {
+        width: 100%; max-width: 800px; background: var(--card); border-radius: 18px;
+        padding: 22px 26px 26px 26px; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+    }
+    .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+    .header h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    .header-buttons { display: flex; gap: 10px; }
+    .icon-btn {
+        width: 38px; height: 38px; border-radius: 50%; border: none; cursor: pointer;
+        display: flex; align-items: center; justify-content: center; font-size: 1rem;
+        color: white; background: #2a2e3d; transition: 0.2s; flex-shrink: 0;
+    }
+    .icon-btn:hover { filter: brightness(1.2); }
+    .icon-btn.primary { background: var(--accent); }
+
+    .canvas-wrap {
+        background: #0b0c12; border-radius: 14px; padding: 10px; border: 1px solid var(--border);
+    }
+    canvas#simCanvas { width: 100%; height: auto; display: block; border-radius: 10px; }
+
+    .legend {
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 22px;
+        font-size: 0.8rem; color: var(--muted); margin: 14px 0 6px 0;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+
+    .chart-section { margin-top: 18px; }
+    .chart-title { font-size: 0.82rem; color: var(--muted); margin-bottom: 6px; }
+    canvas#chartCanvas { width: 100%; height: auto; display: block; }
+
+    .stats-row {
+        display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px;
+        text-align: center;
+    }
+    .stat-label { font-size: 0.75rem; color: #7c85f0; letter-spacing: 0.3px; margin-bottom: 4px; }
+    .stat-value { font-size: 1rem; font-weight: 700; }
+
+    .controls { margin-top: 22px; display: flex; flex-direction: column; gap: 16px; }
+    .controls-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+    .slider-block { display: flex; align-items: center; gap: 12px; }
+    .slider-block .lbl { font-size: 0.82rem; color: #c7cad6; width: 130px; flex-shrink: 0; }
+    .slider-block input[type=range] { flex: 1; accent-color: var(--accent); }
+    .val-box {
+        min-width: 40px; padding: 4px 8px; background: #23263433; border: 1px solid var(--border);
+        border-radius: 6px; text-align: center; font-size: 0.82rem; color: var(--text); background: #20222e;
+    }
+</style>
 </head>
 <body>
-
-    <h2>Kinetika Presipitasi & Dinamika Transport Fluida</h2>
-    
-    <div class="main-container">
-        <div class="canvas-section" style="position: relative;">
-            <div id="flushToast" class="flush-toast">✅ Pipa berhasil dibersihkan (Acid Wash)</div>
-            <canvas id="simCanvas" width="850" height="520"></canvas>
-            
-            <div class="legend">
-                <div class="legend-item"><div class="dot" style="background:var(--ba-color);"></div> Ion Ba²⁺</div>
-                <div class="legend-item"><div class="dot" style="background:var(--sr-color);"></div> Ion Sr²⁺</div>
-                <div class="legend-item"><div class="dot" style="background:var(--so4-color);"></div> Ion SO₄²⁻</div>
-                <div class="legend-item"><div class="dot" style="background:var(--scale-color); border-radius:2px;"></div> Kerak (Nucleated BaSO₄/SrSO₄)</div>
-            </div>
-        </div>
-        
-        <div class="control-panel">
-            
-            <div class="control-section">
-                <div class="control-title">Fluida Formasi (Ba²⁺, Sr²⁺)</div>
-                <div class="slider-group">
-                    <label>Laju Alir <span id="valFlowF">50 bbl/d</span></label>
-                    <input type="range" id="slFlowF" min="0" max="100" value="50">
-                    <label>Konsentrasi Barium <span id="valBa">4000 ppm</span></label>
-                    <input type="range" id="slBa" min="0" max="5000" value="4000" step="100">
-                </div>
-            </div>
-            
-            <div class="control-section">
-                <div class="control-title">Air Injeksi (SO₄²⁻)</div>
-                <div class="slider-group">
-                    <label>Laju Alir <span id="valFlowL">50 bbl/d</span></label>
-                    <input type="range" id="slFlowL" min="0" max="100" value="50">
-                    <label>Konsentrasi Sulfat <span id="valSO4">28000 ppm</span></label>
-                    <input type="range" id="slSO4" min="0" max="30000" value="28000" step="500">
-                </div>
-            </div>
-            
-            <div class="control-section" style="background: #0f172a; border-color: #475569;">
-                <div class="control-title" style="color: #f8fafc;">Dasbor Sistem Operasi</div>
-                
-                <div style="text-align: center; padding: 10px; background: #1e293b; border-radius: 6px; margin-bottom: 10px;">
-                    <div style="font-size: 0.75rem; color: #94a3b8;">SATURATION INDEX (SI)</div>
-                    <div id="valSI" style="font-size: 1.5rem; font-weight: bold; color: #10b981;">0.0</div>
-                    <div id="lblSIStatus" style="font-size: 0.8rem; color: #94a3b8;">Kondisi Undersaturated</div>
-                </div>
-
-                <div class="metrics-grid">
-                    <div class="metric-card">
-                        <div class="metric-title">Max Tebal Kerak</div>
-                        <div class="metric-value" id="valThick">0.0 mm</div>
-                    </div>
-                    <div class="metric-card">
-                        <div class="metric-title">Penyumbatan</div>
-                        <div class="metric-value safe" id="valBlock">0%</div>
-                    </div>
-                </div>
-                
-                <div style="margin-top: 10px; padding: 10px; background: #1e293b; border-radius: 6px; text-align: center; border: 1px solid #ef4444;">
-                    <div class="metric-title" style="color: #fca5a5;">Penurunan Produksi Minyak</div>
-                    <div class="metric-value safe" id="valProdDrop">0%</div>
-                </div>
-            </div>
-            
-            <button id="btnFlush" class="btn-danger">🧹 ACID WASH (Bersihkan Pipa)</button>
+<div class="card">
+    <div class="header">
+        <h2>Presipitasi Barium Sulfat (BaSO4)</h2>
+        <div class="header-buttons">
+            <button id="btnPause" class="icon-btn primary" title="Jeda/Lanjut">⏸</button>
+            <button id="btnReset" class="icon-btn" title="Reset">↺</button>
         </div>
     </div>
+
+    <div class="canvas-wrap">
+        <canvas id="simCanvas" width="740" height="430"></canvas>
+    </div>
+
+    <div class="legend">
+        <div class="legend-item"><div class="dot" style="background:var(--ba-color);"></div> Air Formasi (Ba²⁺)</div>
+        <div class="legend-item"><div class="dot" style="background:var(--so4-color);"></div> Air Laut (SO₄²⁻)</div>
+        <div class="legend-item"><div class="dot" style="background:var(--scale-color);"></div> Kerak BaSO₄</div>
+    </div>
+
+    <div class="chart-section">
+        <div class="chart-title">Potensi Kerak ↑</div>
+        <canvas id="chartCanvas" width="740" height="150"></canvas>
+    </div>
+
+    <div class="stats-row">
+        <div>
+            <div class="stat-label">LAJU KERAK</div>
+            <div class="stat-value" id="valLaju">Sedang</div>
+        </div>
+        <div>
+            <div class="stat-label">STATUS PIPA</div>
+            <div class="stat-value" id="valStatus">Aman</div>
+        </div>
+    </div>
+
+    <div class="controls">
+        <div class="controls-row">
+            <div class="slider-block">
+                <span class="lbl">Rasio Air Laut (%)</span>
+                <input type="range" id="slRasio" min="0" max="100" value="50">
+                <span class="val-box" id="valRasio">50</span>
+            </div>
+            <div class="slider-block">
+                <span class="lbl">Kons. Barium</span>
+                <input type="range" id="slBa" min="0" max="100" value="50">
+                <span class="val-box" id="valBaSl">50</span>
+            </div>
+        </div>
+        <div class="slider-block">
+            <span class="lbl">Kons. Sulfat</span>
+            <input type="range" id="slSO4" min="0" max="100" value="50">
+            <span class="val-box" id="valSO4Sl">50</span>
+        </div>
+    </div>
+</div>
 
 <script>
     const canvas = document.getElementById('simCanvas');
     const ctx = canvas.getContext('2d');
-    
-    // Sliders
-    const slFlowF = document.getElementById('slFlowF');
-    const slBa = document.getElementById('slBa');
-    const slFlowL = document.getElementById('slFlowL');
-    const slSO4 = document.getElementById('slSO4');
-    
-    // Geometry
-    const cX = 425; // Center X
-    const mY = 250; // Mix Y (awal zona pencampuran/pipa produksi)
-    const pW = 100; // Pipe Width Max
-    const pipeBottom = 520;
-    
-    let particles = [];
-    // ARRAY KETEBALAN KERAK SEPANJANG PIPA (Index = Koordinat Y)
-    let scaleArrL = new Array(600).fill(0); 
-    let scaleArrR = new Array(600).fill(0);
-    
-    let totalBlockage = 0; // Persentase maksimum di sepanjang pipa
-    let flashEffect = 0; // Animasi saat reset
+    const chartCanvas = document.getElementById('chartCanvas');
+    const cctx = chartCanvas.getContext('2d');
 
-    // Menumpuk kerak sebagai "medan pegunungan" yang bergerigi/tidak rata,
-    // bukan lengkungan halus — meniru tampilan referensi (gray jagged terrain).
-    function depositTerrain(arr, centerIdx, amount) {
-        let width = 4 + Math.floor(Math.random() * 8); // lebar gundukan 4-11 px, acak tiap deposit (mirip puncak pegunungan)
-        for (let i = centerIdx - width; i <= centerIdx + width; i++) {
-            if (i < mY || i >= 600) continue;
+    const slRasio = document.getElementById('slRasio');
+    const slBa = document.getElementById('slBa');
+    const slSO4 = document.getElementById('slSO4');
+    const valRasio = document.getElementById('valRasio');
+    const valBaSl = document.getElementById('valBaSl');
+    const valSO4Sl = document.getElementById('valSO4Sl');
+
+    // --- GEOMETRI PIPA BENTUK Y (KAPSUL MEMBULAT) ---
+    const cX = 370;                 // pusat horizontal
+    const mergeY = 195;             // titik pertemuan kedua pipa
+    const tubeHalf = 40;            // setengah lebar pipa vertikal keluaran
+    const tubeBottom = 400;         // dasar pipa (tempat kerak menumpuk)
+    const leftStart  = {x: 90,  y: 95};
+    const rightStart = {x: 650, y: 95};
+    const tubeArmWidth = 78;
+
+    let particles = [];
+    // Profil tumpukan kerak di dasar pipa (kolom-kolom sepanjang lebar pipa vertikal)
+    const N_COLS = 16;
+    let pile = new Array(N_COLS).fill(0);
+    const colWidth = (tubeHalf * 2) / N_COLS;
+
+    let paused = false;
+    let flashEffect = 0;
+
+    function pileHeightAt(x) {
+        let idx = Math.floor((x - (cX - tubeHalf)) / colWidth);
+        idx = Math.max(0, Math.min(N_COLS - 1, idx));
+        return pile[idx];
+    }
+    function depositPile(x, amount) {
+        let centerIdx = Math.floor((x - (cX - tubeHalf)) / colWidth);
+        let spread = 1 + Math.floor(Math.random() * 2);
+        for (let i = centerIdx - spread; i <= centerIdx + spread; i++) {
+            if (i < 0 || i >= N_COLS) continue;
             let dist = Math.abs(i - centerIdx);
-            let falloff = Math.max(0, 1 - dist / (width + 1));
-            let jaggedJitter = 0.5 + Math.random() * 1.0; // bikin puncak tidak rata seperti pegunungan
-            let inc = amount * falloff * jaggedJitter;
-            if (arr[i] + inc < pW/2 - 1) arr[i] += inc;
-            else arr[i] = pW/2 - 1;
+            let falloff = Math.max(0, 1 - dist / (spread + 1));
+            let jitter = 0.5 + Math.random() * 1.0;
+            let inc = amount * falloff * jitter;
+            let maxH = tubeBottom - mergeY - 6;
+            pile[i] = Math.min(maxH, pile[i] + inc);
         }
     }
-    
+    function maxPile() { return Math.max(...pile); }
+    function avgPile() { return pile.reduce((a,b)=>a+b,0) / pile.length; }
+
     class Particle {
-        constructor(type, startX, startY, tgtX, tgtY, isLeftFlow) {
-            this.type = type; // 'Ba', 'Sr', 'SO4', 'Scale'
-            this.x = startX; this.y = startY;
-            this.isLeftFlow = isLeftFlow; 
-            
-            let dx = tgtX - startX;
-            let dy = tgtY - startY;
-            let angle = Math.atan2(dy, dx);
-            let speed = 2 + Math.random() * 2;
-            this.vx = Math.cos(angle) * speed;
-            this.vy = Math.sin(angle) * speed;
-            this.active = true;
-            this.isStuck = false;
-            // PARTIKEL 'Scale' LANGSUNG DIANGGAP SUDAH BERADA DI DALAM PIPA PRODUKSI,
-            // sehingga selalu memakai logika deposisi (tahap 2), bukan logika terbang menuju target lama.
-            this.inPipe = (type === 'Scale');
-            if (this.inPipe && this.y < mY) this.y = mY;
+        constructor(type, x, y, vx, vy) {
+            this.type = type; this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+            this.active = true; this.settled = false;
         }
-        
-        update(flowVelocity) {
-            if (this.isStuck) return;
-            
-            // Tahap 1: Aliran masuk menuju zona pencampuran (hanya untuk ion, bukan kerak)
-            if (!this.inPipe && this.y < mY - 20) {
-                this.x += this.vx; this.y += this.vy;
-                this.x += (Math.random() - 0.5) * 1.0; 
-                if (this.y >= mY - 20) this.inPipe = true;
-            } 
-            // Tahap 2: Zona Campur & Pipa Produksi (vertikal ke bawah)
-            else {
-                this.inPipe = true;
-
-                // Deteksi lebar pipa efektif di titik ini (setelah tersumbat kerak)
-                let yIdx = Math.floor(this.y);
-                if (yIdx < mY) yIdx = mY;
-                if (yIdx >= 600) yIdx = 599;
-
-                let localBlock = scaleArrL[yIdx] + scaleArrR[yIdx];
-                let localRatio = Math.max(0, 1 - (localBlock / pW)); // 1 = lancar, 0 = buntu total
-
-                // Semakin sempit pipa di titik ini, semakin lambat alirannya (efek tersumbat nyata)
-                let baseSpeed = (flowVelocity * 0.08) + 0.4;
-                this.vy = baseSpeed * Math.max(localRatio, 0.03) + Math.random() * 0.4;
-
-                // Dinding bergerigi sesuai ketebalan kerak yang sudah menumpuk
-                let wallL = cX - pW/2 + scaleArrL[yIdx];
-                let wallR = cX + pW/2 - scaleArrR[yIdx];
-
-                if (this.type === 'Scale') {
-                    // Kerak TIDAK terus mengalir mengikuti arus seperti ion — ia hanya
-                    // melayang PELAN turun sambil "dituntun" mendekati dinding terdekat,
-                    // lalu segera MENEMPEL PERMANEN (mirip referensi: bergerigi & bertahap).
-                    this.vy *= 0.35; // jatuh jauh lebih lambat daripada ion
-                    let midX = (wallL + wallR) / 2;
-                    let towardWall = (this.x < midX) ? -1 : 1;
-                    this.x += towardWall * (0.5 + Math.random() * 0.6); // dituntun pelan ke dinding
-                    this.x += (Math.random() - 0.5) * 0.6; // sedikit getaran acak, bukan aliran deras
+        update() {
+            if (this.type === 'Ba' || this.type === 'SO4') {
+                if (this.y < mergeY - 5) {
+                    this.x += this.vx; this.y += this.vy;
+                    this.x += (Math.random() - 0.5) * 0.6;
                 } else {
-                    this.x += (Math.random() - 0.5) * 3;
+                    // masuk area pencampuran / pipa vertikal, lanjut turun pelan
+                    this.vy = Math.max(this.vy, 1.2);
+                    this.y += this.vy * 0.6;
+                    this.x += (Math.random() - 0.5) * 1.2;
+                    let lim = tubeHalf - 4;
+                    if (this.x < cX - lim) this.x = cX - lim;
+                    if (this.x > cX + lim) this.x = cX + lim;
+                    let localPileTop = tubeBottom - pileHeightAt(this.x);
+                    if (this.y >= localPileTop) { this.active = false; } // terkubur kerak
+                    if (this.y > tubeBottom + 5) this.active = false;
                 }
-
+            } else if (this.type === 'Scale') {
+                // Kerak jatuh PELAN, sedikit bergoyang, lalu menempel ke tumpukan (tidak terus mengalir)
+                this.vy = 0.9 + Math.random() * 0.3;
                 this.y += this.vy;
-
-                if (this.x < wallL) this.x = wallL;
-                if (this.x > wallR) this.x = wallR;
-                
-                // Logika Deposisi: begitu kerak menyentuh dinding, ia LANGSUNG menyatu
-                // menjadi bagian medan (terrain) yang bergerigi lalu hilang dari daftar
-                // partikel aktif — sehingga tidak ada tumpukan kerak "mengambang" tanpa henti.
-                if (this.type === 'Scale' && localRatio > 0.02) {
-                    if (this.x <= wallL + 3 || this.x >= wallR - 3) {
-                        if (Math.random() < 0.5) {
-                            this.isStuck = true;
-                            this.active = false; // langsung menyatu ke medan, bukan menumpuk sbg partikel
-                            let arr = (this.x <= wallL + 3) ? scaleArrL : scaleArrR;
-                            depositTerrain(arr, yIdx, 0.6); // pertambahan kecil = penumpukan bertahap/pelan
-                        }
-                    }
-                }
-
-                // Jika pipa sudah nyaris buntu total (>=97%), aliran ion praktis berhenti,
-                // memberi kesan pipa benar-benar tersumbat.
-                if (totalBlockage >= 97 && this.type !== 'Scale') {
-                    this.vy *= 0.05;
+                this.x += (Math.random() - 0.5) * 0.7;
+                let lim = tubeHalf - 4;
+                if (this.x < cX - lim) this.x = cX - lim;
+                if (this.x > cX + lim) this.x = cX + lim;
+                let localPileTop = tubeBottom - pileHeightAt(this.x);
+                if (this.y >= localPileTop) {
+                    depositPile(this.x, 1.1);
+                    this.active = false;
                 }
             }
         }
-        
         draw() {
             ctx.beginPath();
-            if(this.type === 'Scale') {
-                ctx.fillStyle = '#f59e0b';
+            if (this.type === 'Scale') {
+                ctx.fillStyle = '#f5a623';
                 ctx.moveTo(this.x, this.y - 4); ctx.lineTo(this.x + 4, this.y);
                 ctx.lineTo(this.x, this.y + 4); ctx.lineTo(this.x - 4, this.y);
                 ctx.fill();
             } else {
-                ctx.arc(this.x, this.y, 3, 0, Math.PI*2);
-                if (this.type === 'Ba') ctx.fillStyle = '#3b82f6';
-                else if (this.type === 'Sr') ctx.fillStyle = '#a855f7';
-                else if (this.type === 'SO4') ctx.fillStyle = '#10b981';
+                ctx.arc(this.x, this.y, 3.2, 0, Math.PI * 2);
+                ctx.fillStyle = this.type === 'Ba' ? '#3b82f6' : '#34d399';
                 ctx.fill();
             }
         }
     }
-    
-    function drawPipes() {
-        ctx.fillStyle = '#12141a'; ctx.fillRect(0, 0, canvas.width, canvas.height);
-        
-        ctx.strokeStyle = '#475569'; ctx.lineWidth = 8; ctx.lineJoin = 'round';
-        ctx.beginPath(); ctx.moveTo(70, 50); ctx.lineTo(cX - pW/2, mY); ctx.lineTo(cX - pW/2, pipeBottom); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(780, 50); ctx.lineTo(cX + pW/2, mY); ctx.lineTo(cX + pW/2, pipeBottom); ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(200, 50); ctx.lineTo(cX, mY - 60); ctx.lineTo(650, 50); ctx.stroke();
-        
-        ctx.fillStyle = '#94a3b8'; ctx.font = '13px Arial'; ctx.textAlign = 'center';
-        ctx.fillText('Air Formasi', 135, 40); ctx.fillText('Air Laut / Injeksi', 715, 40); ctx.fillText('Sumur Produksi', cX, 510);
-        
-        // Render Kerak Dinamis (terus terakumulasi, hanya hilang saat Acid Wash)
-        ctx.fillStyle = '#92400e'; 
-        ctx.beginPath(); ctx.moveTo(cX - pW/2, mY);
-        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX - pW/2 + scaleArrL[y], y);
-        ctx.lineTo(cX - pW/2, pipeBottom); ctx.fill();
-        
-        ctx.beginPath(); ctx.moveTo(cX + pW/2, mY);
-        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX + pW/2 - scaleArrR[y], y);
-        ctx.lineTo(cX + pW/2, pipeBottom); ctx.fill();
-        
-        // Garis batas kerak
-        ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 1.5;
-        ctx.beginPath(); ctx.moveTo(cX - pW/2 + scaleArrL[mY], mY);
-        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX - pW/2 + scaleArrL[y], y);
-        ctx.stroke();
-        
-        ctx.beginPath(); ctx.moveTo(cX + pW/2 - scaleArrR[mY], mY);
-        for(let y = mY; y <= pipeBottom; y++) ctx.lineTo(cX + pW/2 - scaleArrR[y], y);
-        ctx.stroke();
 
-        // Titik tersumbat total (choke point) ditandai merah berkedip
-        if (totalBlockage >= 90) {
-            let chokeY = mY;
-            let maxV = -1;
-            for (let y = mY; y <= pipeBottom; y++) {
-                let v = scaleArrL[y] + scaleArrR[y];
-                if (v > maxV) { maxV = v; chokeY = y; }
-            }
-            ctx.strokeStyle = `rgba(239,68,68,${0.5 + 0.5*Math.sin(Date.now()/150)})`;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(cX - pW/2 + scaleArrL[chokeY] - 4, chokeY);
-            ctx.lineTo(cX + pW/2 - scaleArrR[chokeY] + 4, chokeY);
-            ctx.stroke();
+    function capsule(p1, p2, width, fill, stroke) {
+        ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+        ctx.lineWidth = width + 5; ctx.strokeStyle = stroke;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+        ctx.lineWidth = width; ctx.strokeStyle = fill;
+        ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+    }
+
+    function drawScene() {
+        ctx.fillStyle = '#0b0c12'; ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // pipa diagonal (kiri: air formasi, kanan: air laut)
+        capsule(leftStart,  {x: cX, y: mergeY}, tubeArmWidth, '#252838', '#3d4258');
+        capsule(rightStart, {x: cX, y: mergeY}, tubeArmWidth, '#252838', '#3d4258');
+        // pipa vertikal keluaran
+        capsule({x: cX, y: mergeY - 10}, {x: cX, y: tubeBottom}, tubeHalf * 2, '#252838', '#3d4258');
+
+        // label
+        ctx.fillStyle = '#e5e7eb'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'left';
+        ctx.fillText('Air Formasi (Ba)', leftStart.x - 20, leftStart.y - 12);
+        ctx.textAlign = 'right';
+        ctx.fillText('Air Laut (SO4)', rightStart.x + 20, rightStart.y - 12);
+
+        // tumpukan kerak (jagged, menumpuk dari dasar pipa)
+        ctx.beginPath();
+        ctx.moveTo(cX - tubeHalf, tubeBottom);
+        for (let i = 0; i <= N_COLS; i++) {
+            let x = cX - tubeHalf + i * colWidth;
+            let h = pile[Math.min(i, N_COLS - 1)];
+            ctx.lineTo(x, tubeBottom - h);
         }
+        ctx.lineTo(cX + tubeHalf, tubeBottom);
+        ctx.closePath();
+        let grad = ctx.createLinearGradient(0, tubeBottom - 170, 0, tubeBottom);
+        grad.addColorStop(0, '#c9791a');
+        grad.addColorStop(1, '#f5a623');
+        ctx.fillStyle = grad;
+        ctx.fill();
+        ctx.strokeStyle = '#ffcf7a'; ctx.lineWidth = 1.5; ctx.stroke();
 
-        // Animasi kilat hijau saat baru saja di-flush/reset
+        // garis putus-putus di dasar pipa (indikator outlet)
+        ctx.strokeStyle = '#5a5f75'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]);
+        ctx.beginPath(); ctx.moveTo(cX - tubeHalf, tubeBottom + 6); ctx.lineTo(cX + tubeHalf, tubeBottom + 6); ctx.stroke();
+        ctx.setLineDash([]);
+
         if (flashEffect > 0) {
-            ctx.fillStyle = `rgba(16, 185, 129, ${flashEffect / 20})`;
-            ctx.fillRect(cX - pW/2, mY, pW, pipeBottom - mY);
+            ctx.fillStyle = `rgba(52, 211, 153, ${flashEffect / 20})`;
+            ctx.fillRect(cX - tubeHalf, mergeY, tubeHalf * 2, tubeBottom - mergeY);
             flashEffect--;
         }
     }
-    
-    function processSystem() {
-        let flowF = parseInt(slFlowF.value); let cBa = parseInt(slBa.value);
-        let flowL = parseInt(slFlowL.value); let cSO4 = parseInt(slSO4.value);
-        
-        let totalFlow = flowF + flowL;
-        let siValue = 0;
-        
-        if (totalFlow > 0) {
-            let mixBa = (flowF / totalFlow) * cBa;
-            let mixSO4 = (flowL / totalFlow) * cSO4;
-            siValue = (mixBa * mixSO4) / 5000000; 
-        }
-        
-        // Laju kemunculan partikel ion juga sedikit dihambat bila pipa sudah hampir buntu,
-        // merepresentasikan tekanan balik (backpressure) dari sumbatan.
-        let spawnDamping = totalBlockage >= 90 ? 0.3 : 1;
 
-        if (flowF > 0 && Math.random() < (flowF / 100) * spawnDamping) {
-            let type = Math.random() > 0.25 ? 'Ba' : 'Sr'; 
-            particles.push(new Particle(type, 135 + (Math.random() - 0.5) * 60, 50, cX - 25, mY, true));
+    function computeMassa() {
+        let r = parseInt(slRasio.value);      // % Air Laut
+        let kBa = parseInt(slBa.value);
+        let kSO4 = parseInt(slSO4.value);
+        let peakX = (kBa + kSO4) > 0 ? 100 * kBa / (kBa + kSO4) : 50;
+        let peakY = (kBa / 100) * (kSO4 / 100) * 100; // maks 100, ditampilkan s/d 50
+        let massa;
+        if (r <= peakX) massa = peakX > 0 ? peakY * (r / peakX) : 0;
+        else massa = (100 - peakX) > 0 ? peakY * ((100 - r) / (100 - peakX)) : 0;
+        return { r, kBa, kSO4, peakX, peakY, massa };
+    }
+
+    function drawChart(m) {
+        cctx.clearRect(0, 0, chartCanvas.width, chartCanvas.height);
+        const padL = 34, padR = 14, padT = 10, padB = 14;
+        const w = chartCanvas.width - padL - padR;
+        const h = chartCanvas.height - padT - padB;
+        const yMax = 50;
+
+        // grid + label sumbu
+        cctx.strokeStyle = '#262a38'; cctx.fillStyle = '#6b7086'; cctx.font = '10px Segoe UI'; cctx.textAlign = 'right';
+        for (let v = 0; v <= yMax; v += 10) {
+            let y = padT + h - (v / yMax) * h;
+            cctx.beginPath(); cctx.moveTo(padL, y); cctx.lineTo(padL + w, y); cctx.stroke();
+            cctx.fillText(v, padL - 6, y + 3);
         }
-        
-        if (flowL > 0 && Math.random() < (flowL / 100) * spawnDamping) {
-            particles.push(new Particle('SO4', 715 + (Math.random() - 0.5) * 60, 50, cX + 25, mY, false));
+
+        function xPos(pct) { return padL + (pct / 100) * w; }
+        function yPos(val) { return padT + h - (Math.min(val, yMax) / yMax) * h; }
+
+        // triangle area (kurva potensi kerak)
+        cctx.beginPath();
+        cctx.moveTo(xPos(0), yPos(0));
+        cctx.lineTo(xPos(m.peakX), yPos(m.peakY));
+        cctx.lineTo(xPos(100), yPos(0));
+        cctx.lineTo(xPos(100), padT + h);
+        cctx.lineTo(xPos(0), padT + h);
+        cctx.closePath();
+        cctx.fillStyle = 'rgba(99,102,241,0.12)';
+        cctx.fill();
+
+        cctx.beginPath();
+        cctx.moveTo(xPos(0), yPos(0));
+        cctx.lineTo(xPos(m.peakX), yPos(m.peakY));
+        cctx.lineTo(xPos(100), yPos(0));
+        cctx.strokeStyle = '#818cf8'; cctx.lineWidth = 2; cctx.stroke();
+
+        // marker posisi saat ini
+        let mx = xPos(m.r), my = yPos(m.massa);
+        cctx.beginPath(); cctx.arc(mx, my, 5, 0, Math.PI * 2);
+        cctx.fillStyle = '#f5a623'; cctx.fill();
+        cctx.strokeStyle = '#fff'; cctx.lineWidth = 1.5; cctx.stroke();
+
+        cctx.fillStyle = '#f4f5f7'; cctx.font = 'bold 11px Segoe UI'; cctx.textAlign = 'center';
+        cctx.fillText('Massa: ' + m.massa.toFixed(1), mx, my - 12);
+    }
+
+    function processSystem(m) {
+        let spawnBa = (1 - m.r / 100) * (m.kBa / 100);
+        let spawnSO4 = (m.r / 100) * (m.kSO4 / 100);
+
+        if (Math.random() < spawnBa * 0.9) {
+            let sy = leftStart.y + (Math.random() - 0.5) * 30;
+            let sx = leftStart.x + (Math.random() - 0.5) * 20;
+            let dx = cX - sx, dy = mergeY - sy;
+            let ang = Math.atan2(dy, dx), sp = 2.2 + Math.random() * 1.4;
+            particles.push(new Particle('Ba', sx, sy, Math.cos(ang) * sp, Math.sin(ang) * sp));
         }
-        
-        let nucleationProb = siValue > 1 ? Math.min(siValue * 0.08, 0.55) : 0;
+        if (Math.random() < spawnSO4 * 0.9) {
+            let sy = rightStart.y + (Math.random() - 0.5) * 30;
+            let sx = rightStart.x + (Math.random() - 0.5) * 20;
+            let dx = cX - sx, dy = mergeY - sy;
+            let ang = Math.atan2(dy, dx), sp = 2.2 + Math.random() * 1.4;
+            particles.push(new Particle('SO4', sx, sy, Math.cos(ang) * sp, Math.sin(ang) * sp));
+        }
+
+        // nukleasi: Ba + SO4 berdekatan di zona percampuran -> jadi kerak
+        let nucleationProb = Math.min(m.massa / 50, 1) * 0.6;
         if (nucleationProb > 0) {
-            for(let i = 0; i < particles.length; i++) {
+            for (let i = 0; i < particles.length; i++) {
                 let p1 = particles[i];
-                if(!p1.active || p1.isStuck || p1.type === 'Scale' || p1.y < mY - 20) continue;
-                
-                for(let j = i + 1; j < particles.length; j++) {
+                if (!p1.active || p1.type === 'Scale' || p1.y < mergeY - 40) continue;
+                for (let j = i + 1; j < particles.length; j++) {
                     let p2 = particles[j];
-                    if(!p2.active || p2.isStuck || p2.type === 'Scale' || p2.y < mY - 20) continue;
-                    
-                    if ((p1.isLeftFlow !== p2.isLeftFlow) && p1.type !== p2.type) {
-                        let dist = Math.sqrt((p1.x - p2.x)**2 + (p1.y - p2.y)**2);
-                        if(dist < 20 && Math.random() < nucleationProb) {
+                    if (!p2.active || p2.type === 'Scale' || p2.y < mergeY - 40) continue;
+                    if (p1.type !== p2.type) {
+                        let dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                        if (dist < 16 && Math.random() < nucleationProb) {
                             p1.active = false; p2.active = false;
-                            particles.push(new Particle('Scale', (p1.x+p2.x)/2, Math.max((p1.y+p2.y)/2, mY), 0, 0, false));
+                            let nx = (p1.x + p2.x) / 2, ny = Math.max((p1.y + p2.y) / 2, mergeY);
+                            particles.push(new Particle('Scale', nx, ny, 0, 0));
                             break;
                         }
                     }
                 }
             }
         }
-        return { totalFlow, siValue };
     }
-    
-    function updateDasbor(flowData) {
-        document.getElementById('valFlowF').innerText = slFlowF.value + ' bbl/d';
-        document.getElementById('valBa').innerText = slBa.value + ' ppm';
-        document.getElementById('valFlowL').innerText = slFlowL.value + ' bbl/d';
-        document.getElementById('valSO4').innerText = slSO4.value + ' ppm';
-        
-        // Cari titik penyumbatan maksimum (choke point) di sepanjang pipa
-        let maxBlockagePoint = 0;
-        for (let i = mY; i <= pipeBottom; i++) {
-            let localBlockage = scaleArrL[i] + scaleArrR[i];
-            if (localBlockage > maxBlockagePoint) maxBlockagePoint = localBlockage;
-        }
-        
-        totalBlockage = (maxBlockagePoint / pW) * 100;
-        if (totalBlockage > 100) totalBlockage = 100;
-        
-        let radiusSisa = 1 - (totalBlockage/100);
-        let prodDrop = (1 - (radiusSisa * radiusSisa)) * 100;
-        
-        let valSI = document.getElementById('valSI');
-        let lblSI = document.getElementById('lblSIStatus');
-        
-        valSI.innerText = flowData.siValue.toFixed(2);
-        if (flowData.siValue < 0.5) { valSI.style.color = '#10b981'; lblSI.innerText = 'Undersaturated (Aman)'; }
-        else if (flowData.siValue < 1.5) { valSI.style.color = '#f59e0b'; lblSI.innerText = 'Saturated (Waspada)'; }
-        else { valSI.style.color = '#ef4444'; lblSI.innerText = 'Supersaturated (Presipitasi Masif)'; }
-        
-        document.getElementById('valThick').innerText = maxBlockagePoint.toFixed(1) + ' mm';
-        
-        let elBlock = document.getElementById('valBlock');
-        elBlock.innerText = totalBlockage.toFixed(0) + '%';
-        elBlock.className = totalBlockage > 50 ? 'metric-value alert' : (totalBlockage > 20 ? 'metric-value' : 'metric-value safe');
-        
-        let elProd = document.getElementById('valProdDrop');
-        elProd.innerText = prodDrop.toFixed(0) + '%';
-        elProd.className = prodDrop > 50 ? 'metric-value alert' : (prodDrop > 20 ? 'metric-value' : 'metric-value safe');
+
+    function updateStats(m) {
+        valRasio.innerText = m.r; valBaSl.innerText = m.kBa; valSO4Sl.innerText = m.kSO4;
+
+        let laju = document.getElementById('valLaju');
+        if (m.massa < 10) { laju.innerText = 'Rendah'; laju.style.color = 'var(--safe)'; }
+        else if (m.massa < 30) { laju.innerText = 'Sedang'; laju.style.color = 'var(--warn)'; }
+        else { laju.innerText = 'Tinggi'; laju.style.color = 'var(--danger)'; }
+
+        let blockagePct = (maxPile() / (tubeBottom - mergeY - 6)) * 100;
+        let status = document.getElementById('valStatus');
+        if (blockagePct < 40) { status.innerText = 'Aman'; status.style.color = 'var(--safe)'; }
+        else if (blockagePct < 75) { status.innerText = 'Waspada'; status.style.color = 'var(--warn)'; }
+        else { status.innerText = 'Bahaya'; status.style.color = 'var(--danger)'; }
     }
-    
+
     function animate() {
-        drawPipes();
-        let flowData = processSystem();
-        
-        for(let i = particles.length - 1; i >= 0; i--) {
-            let p = particles[i];
-            if (p.active) {
-                p.update(flowData.totalFlow);
-                p.draw();
-                if (p.y > canvas.height + 10 && !p.isStuck) particles.splice(i, 1);
-            } else {
-                particles.splice(i, 1);
+        let m = computeMassa();
+        drawScene();
+        drawChart(m);
+
+        if (!paused) {
+            processSystem(m);
+            for (let i = particles.length - 1; i >= 0; i--) {
+                let p = particles[i];
+                if (p.active) { p.update(); } else { particles.splice(i, 1); continue; }
+                if (p.y > canvas.height + 10) { particles.splice(i, 1); continue; }
             }
         }
-        
-        updateDasbor(flowData);
+        for (let p of particles) p.draw();
+
+        updateStats(m);
         requestAnimationFrame(animate);
     }
-    
-    document.getElementById('btnFlush').addEventListener('click', () => {
-        // Reset seluruh variabel: kerak, partikel, dan indikator penyumbatan
-        particles = [];
-        scaleArrL.fill(0);
-        scaleArrR.fill(0);
-        totalBlockage = 0;
-        flashEffect = 20; // Trigger animasi kilat hijau
 
-        // Tampilkan notifikasi singkat bahwa pipa sudah dibersihkan
-        let toast = document.getElementById('flushToast');
-        toast.classList.add('show');
-        setTimeout(() => toast.classList.remove('show'), 1800);
+    document.getElementById('btnPause').addEventListener('click', (e) => {
+        paused = !paused;
+        e.target.innerText = paused ? '▶' : '⏸';
     });
-    
+    document.getElementById('btnReset').addEventListener('click', () => {
+        particles = [];
+        pile.fill(0);
+        flashEffect = 20;
+    });
+
     animate();
 </script>
 </body>
 </html>
 """
 
-components.html(html_app, height=750, scrolling=False)
+components.html(html_app, height=900, scrolling=False)
