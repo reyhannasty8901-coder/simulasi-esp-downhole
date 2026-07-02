@@ -23,13 +23,14 @@ html_app = """
     :root {
         --bg: #0e1017;
         --card: #14161f;
-        --panel: #1a1d29;
         --border: #2a2e3d;
         --text: #f4f5f7;
         --muted: #8b90a3;
         --ba-color: #3b82f6;
+        --sr-color: #a855f7;
         --so4-color: #34d399;
-        --scale-color: #f5a623;
+        --baso4-color: #f5a623;
+        --srso4-color: #eab308;
         --accent: #6366f1;
         --safe: #34d399;
         --warn: #f5a623;
@@ -43,7 +44,7 @@ html_app = """
     }
     .card {
         width: 100%; max-width: 800px; background: var(--card); border-radius: 18px;
-        padding: 22px 26px 26px 26px; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
+        padding: 22px 26px 34px 26px; box-shadow: 0 10px 30px rgba(0,0,0,0.45);
     }
     .header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
     .header h2 { margin: 0; font-size: 1.25rem; font-weight: 600; }
@@ -62,8 +63,8 @@ html_app = """
     canvas#simCanvas { width: 100%; height: auto; display: block; border-radius: 10px; }
 
     .legend {
-        display: flex; flex-wrap: wrap; justify-content: center; gap: 22px;
-        font-size: 0.8rem; color: var(--muted); margin: 14px 0 6px 0;
+        display: flex; flex-wrap: wrap; justify-content: center; gap: 18px;
+        font-size: 0.78rem; color: var(--muted); margin: 14px 0 6px 0;
     }
     .legend-item { display: flex; align-items: center; gap: 6px; }
     .dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
@@ -85,7 +86,7 @@ html_app = """
     .slider-block .lbl { font-size: 0.82rem; color: #c7cad6; width: 130px; flex-shrink: 0; }
     .slider-block input[type=range] { flex: 1; accent-color: var(--accent); }
     .val-box {
-        min-width: 40px; padding: 4px 8px; background: #23263433; border: 1px solid var(--border);
+        min-width: 40px; padding: 4px 8px; border: 1px solid var(--border);
         border-radius: 6px; text-align: center; font-size: 0.82rem; color: var(--text); background: #20222e;
     }
 </style>
@@ -106,8 +107,10 @@ html_app = """
 
     <div class="legend">
         <div class="legend-item"><div class="dot" style="background:var(--ba-color);"></div> Air Formasi (Ba²⁺)</div>
+        <div class="legend-item"><div class="dot" style="background:var(--sr-color);"></div> Air Formasi (Sr²⁺)</div>
         <div class="legend-item"><div class="dot" style="background:var(--so4-color);"></div> Air Laut (SO₄²⁻)</div>
-        <div class="legend-item"><div class="dot" style="background:var(--scale-color);"></div> Kerak BaSO₄</div>
+        <div class="legend-item"><div class="dot" style="background:var(--baso4-color);"></div> Kerak BaSO₄</div>
+        <div class="legend-item"><div class="dot" style="background:var(--srso4-color);"></div> Kerak SrSO₄</div>
     </div>
 
     <div class="chart-section">
@@ -161,91 +164,125 @@ html_app = """
     const valSO4Sl = document.getElementById('valSO4Sl');
 
     // --- GEOMETRI PIPA BENTUK Y (KAPSUL MEMBULAT) ---
-    const cX = 370;                 // pusat horizontal
-    const mergeY = 195;             // titik pertemuan kedua pipa
-    const tubeHalf = 40;            // setengah lebar pipa vertikal keluaran
-    const tubeBottom = 400;         // dasar pipa (tempat kerak menumpuk)
+    const cX = 370;
+    const mergeY = 195;
+    const tubeHalf = 40;
+    const tubeBottom = 400;
     const leftStart  = {x: 90,  y: 95};
     const rightStart = {x: 650, y: 95};
     const tubeArmWidth = 78;
 
     let particles = [];
-    // Profil tumpukan kerak di dasar pipa (kolom-kolom sepanjang lebar pipa vertikal)
-    const N_COLS = 16;
-    let pile = new Array(N_COLS).fill(0);
-    const colWidth = (tubeHalf * 2) / N_COLS;
-
     let paused = false;
     let flashEffect = 0;
 
-    function pileHeightAt(x) {
-        let idx = Math.floor((x - (cX - tubeHalf)) / colWidth);
-        idx = Math.max(0, Math.min(N_COLS - 1, idx));
-        return pile[idx];
-    }
-    function depositPile(x, amount) {
-        let centerIdx = Math.floor((x - (cX - tubeHalf)) / colWidth);
-        let spread = 1 + Math.floor(Math.random() * 2);
+    // --- KERAK MENEMPEL DARI DINDING KIRI & KANAN, MENUMPUK KE ARAH TENGAH ---
+    const arrLen = (tubeBottom - mergeY) + 10;
+    let scaleArrL = new Array(arrLen).fill(0);   // ketebalan kerak dari dinding kiri
+    let scaleArrR = new Array(arrLen).fill(0);   // ketebalan kerak dari dinding kanan
+    let colorArrL = new Array(arrLen).fill(0);   // 0 = BaSO4 (oranye) ... 1 = SrSO4 (kuning), rata-rata tertimbang
+    let colorArrR = new Array(arrLen).fill(0);
+
+    function idxOf(y) { return Math.max(0, Math.min(arrLen - 1, Math.floor(y - mergeY))); }
+    function wallLAt(y) { return cX - tubeHalf + scaleArrL[idxOf(y)]; }
+    function wallRAt(y) { return cX + tubeHalf - scaleArrR[idxOf(y)]; }
+
+    function depositWall(side, y, amount, colorVal) {
+        let centerIdx = idxOf(y);
+        let spread = 2 + Math.floor(Math.random() * 3);
+        let arr = side === 'L' ? scaleArrL : scaleArrR;
+        let carr = side === 'L' ? colorArrL : colorArrR;
         for (let i = centerIdx - spread; i <= centerIdx + spread; i++) {
-            if (i < 0 || i >= N_COLS) continue;
+            if (i < 0 || i >= arrLen) continue;
             let dist = Math.abs(i - centerIdx);
             let falloff = Math.max(0, 1 - dist / (spread + 1));
             let jitter = 0.5 + Math.random() * 1.0;
             let inc = amount * falloff * jitter;
-            let maxH = tubeBottom - mergeY - 6;
-            pile[i] = Math.min(maxH, pile[i] + inc);
+            let cap = tubeHalf - 3;
+            let newThk = Math.min(cap, arr[i] + inc);
+            let added = newThk - arr[i];
+            if (added > 0) {
+                let totalThk = arr[i] + added;
+                carr[i] = (carr[i] * arr[i] + colorVal * added) / totalThk;
+                arr[i] = totalThk;
+            }
         }
     }
-    function maxPile() { return Math.max(...pile); }
-    function avgPile() { return pile.reduce((a,b)=>a+b,0) / pile.length; }
+    function maxBlockagePx() {
+        let m = 0;
+        for (let i = 0; i < arrLen; i++) { let v = scaleArrL[i] + scaleArrR[i]; if (v > m) m = v; }
+        return m;
+    }
+    function blendColor(orangeRGB, yellowRGB, t) {
+        let r = orangeRGB[0] + (yellowRGB[0] - orangeRGB[0]) * t;
+        let g = orangeRGB[1] + (yellowRGB[1] - orangeRGB[1]) * t;
+        let b = orangeRGB[2] + (yellowRGB[2] - orangeRGB[2]) * t;
+        return `rgb(${r | 0},${g | 0},${b | 0})`;
+    }
+    const ORANGE = [245, 166, 35];
+    const YELLOW = [234, 179, 8];
 
     class Particle {
-        constructor(type, x, y, vx, vy) {
+        // type: 'Ba' | 'Sr' | 'SO4' | 'Scale'
+        // scaleKind (khusus type Scale): 'BaSO4' (oranye) | 'SrSO4' (kuning)
+        constructor(type, x, y, vx, vy, scaleKind) {
             this.type = type; this.x = x; this.y = y; this.vx = vx; this.vy = vy;
-            this.active = true; this.settled = false;
+            this.active = true; this.scaleKind = scaleKind || null;
         }
         update() {
-            if (this.type === 'Ba' || this.type === 'SO4') {
+            if (this.type === 'Scale') {
+                // Kerak jatuh PELAN & bergoyang kecil, dituntun ke dinding TERDEKAT, lalu langsung menempel
+                this.vy = (this.vy || 0.9) + 0.02;
+                if (this.vy > 1.3) this.vy = 1.3;
+                this.y += this.vy;
+
+                let wallL = wallLAt(this.y), wallR = wallRAt(this.y);
+                let midX = (wallL + wallR) / 2;
+                let towardWall = (this.x < midX) ? -1 : 1;
+                this.x += towardWall * (0.5 + Math.random() * 0.5);
+                this.x += (Math.random() - 0.5) * 0.5;
+
+                if (this.x < wallL) this.x = wallL;
+                if (this.x > wallR) this.x = wallR;
+
+                if (wallR - wallL < 6) { this.active = false; return; } // pipa sudah nyaris buntu total
+
+                if (this.x <= wallL + 3 || this.x >= wallR - 3) {
+                    if (Math.random() < 0.5) {
+                        let side = (this.x <= wallL + 3) ? 'L' : 'R';
+                        let colorVal = this.scaleKind === 'SrSO4' ? 1 : 0;
+                        depositWall(side, this.y, 0.7, colorVal);
+                        this.active = false;
+                    }
+                }
+                if (this.y > tubeBottom + 5) this.active = false;
+            } else {
+                // Ion Ba / Sr / SO4
                 if (this.y < mergeY - 5) {
                     this.x += this.vx; this.y += this.vy;
                     this.x += (Math.random() - 0.5) * 0.6;
                 } else {
-                    // masuk area pencampuran / pipa vertikal, lanjut turun pelan
-                    this.vy = Math.max(this.vy, 1.2);
-                    this.y += this.vy * 0.6;
+                    this.vy = Math.max(this.vy, 1.4);
+                    this.y += this.vy * 0.55;
                     this.x += (Math.random() - 0.5) * 1.2;
-                    let lim = tubeHalf - 4;
-                    if (this.x < cX - lim) this.x = cX - lim;
-                    if (this.x > cX + lim) this.x = cX + lim;
-                    let localPileTop = tubeBottom - pileHeightAt(this.x);
-                    if (this.y >= localPileTop) { this.active = false; } // terkubur kerak
-                    if (this.y > tubeBottom + 5) this.active = false;
+                    let wallL = wallLAt(this.y), wallR = wallRAt(this.y);
+                    if (this.x < wallL) this.x = wallL;
+                    if (this.x > wallR) this.x = wallR;
+                    if (wallR - wallL < 6) this.vy *= 0.05; // tersumbat, aliran nyaris berhenti
                 }
-            } else if (this.type === 'Scale') {
-                // Kerak jatuh PELAN, sedikit bergoyang, lalu menempel ke tumpukan (tidak terus mengalir)
-                this.vy = 0.9 + Math.random() * 0.3;
-                this.y += this.vy;
-                this.x += (Math.random() - 0.5) * 0.7;
-                let lim = tubeHalf - 4;
-                if (this.x < cX - lim) this.x = cX - lim;
-                if (this.x > cX + lim) this.x = cX + lim;
-                let localPileTop = tubeBottom - pileHeightAt(this.x);
-                if (this.y >= localPileTop) {
-                    depositPile(this.x, 1.1);
-                    this.active = false;
-                }
+                if (this.y > tubeBottom + 5) this.active = false;
             }
         }
         draw() {
             ctx.beginPath();
             if (this.type === 'Scale') {
-                ctx.fillStyle = '#f5a623';
+                ctx.fillStyle = this.scaleKind === 'SrSO4' ? '#eab308' : '#f5a623';
                 ctx.moveTo(this.x, this.y - 4); ctx.lineTo(this.x + 4, this.y);
                 ctx.lineTo(this.x, this.y + 4); ctx.lineTo(this.x - 4, this.y);
                 ctx.fill();
             } else {
                 ctx.arc(this.x, this.y, 3.2, 0, Math.PI * 2);
-                ctx.fillStyle = this.type === 'Ba' ? '#3b82f6' : '#34d399';
+                ctx.fillStyle = this.type === 'Ba' ? '#3b82f6' : (this.type === 'Sr' ? '#a855f7' : '#34d399');
                 ctx.fill();
             }
         }
@@ -262,36 +299,29 @@ html_app = """
     function drawScene() {
         ctx.fillStyle = '#0b0c12'; ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-        // pipa diagonal (kiri: air formasi, kanan: air laut)
         capsule(leftStart,  {x: cX, y: mergeY}, tubeArmWidth, '#252838', '#3d4258');
         capsule(rightStart, {x: cX, y: mergeY}, tubeArmWidth, '#252838', '#3d4258');
-        // pipa vertikal keluaran
         capsule({x: cX, y: mergeY - 10}, {x: cX, y: tubeBottom}, tubeHalf * 2, '#252838', '#3d4258');
 
-        // label
         ctx.fillStyle = '#e5e7eb'; ctx.font = 'bold 12px Segoe UI'; ctx.textAlign = 'left';
-        ctx.fillText('Air Formasi (Ba)', leftStart.x - 20, leftStart.y - 12);
+        ctx.fillText('Air Formasi (Ba, Sr)', leftStart.x - 20, leftStart.y - 12);
         ctx.textAlign = 'right';
         ctx.fillText('Air Laut (SO4)', rightStart.x + 20, rightStart.y - 12);
 
-        // tumpukan kerak (jagged, menumpuk dari dasar pipa)
-        ctx.beginPath();
-        ctx.moveTo(cX - tubeHalf, tubeBottom);
-        for (let i = 0; i <= N_COLS; i++) {
-            let x = cX - tubeHalf + i * colWidth;
-            let h = pile[Math.min(i, N_COLS - 1)];
-            ctx.lineTo(x, tubeBottom - h);
+        // kerak: dinding KIRI & KANAN menumpuk ke arah tengah (bukan dari dasar ke atas)
+        for (let y = mergeY; y <= tubeBottom; y += 2) {
+            let idx = idxOf(y);
+            let thL = scaleArrL[idx], thR = scaleArrR[idx];
+            if (thL > 0.3) {
+                ctx.fillStyle = blendColor(ORANGE, YELLOW, colorArrL[idx]);
+                ctx.fillRect(cX - tubeHalf, y, thL, 2.2);
+            }
+            if (thR > 0.3) {
+                ctx.fillStyle = blendColor(ORANGE, YELLOW, colorArrR[idx]);
+                ctx.fillRect(cX + tubeHalf - thR, y, thR, 2.2);
+            }
         }
-        ctx.lineTo(cX + tubeHalf, tubeBottom);
-        ctx.closePath();
-        let grad = ctx.createLinearGradient(0, tubeBottom - 170, 0, tubeBottom);
-        grad.addColorStop(0, '#c9791a');
-        grad.addColorStop(1, '#f5a623');
-        ctx.fillStyle = grad;
-        ctx.fill();
-        ctx.strokeStyle = '#ffcf7a'; ctx.lineWidth = 1.5; ctx.stroke();
 
-        // garis putus-putus di dasar pipa (indikator outlet)
         ctx.strokeStyle = '#5a5f75'; ctx.lineWidth = 2; ctx.setLineDash([4, 5]);
         ctx.beginPath(); ctx.moveTo(cX - tubeHalf, tubeBottom + 6); ctx.lineTo(cX + tubeHalf, tubeBottom + 6); ctx.stroke();
         ctx.setLineDash([]);
@@ -304,11 +334,11 @@ html_app = """
     }
 
     function computeMassa() {
-        let r = parseInt(slRasio.value);      // % Air Laut
+        let r = parseInt(slRasio.value);
         let kBa = parseInt(slBa.value);
         let kSO4 = parseInt(slSO4.value);
         let peakX = (kBa + kSO4) > 0 ? 100 * kBa / (kBa + kSO4) : 50;
-        let peakY = (kBa / 100) * (kSO4 / 100) * 100; // maks 100, ditampilkan s/d 50
+        let peakY = (kBa / 100) * (kSO4 / 100) * 100;
         let massa;
         if (r <= peakX) massa = peakX > 0 ? peakY * (r / peakX) : 0;
         else massa = (100 - peakX) > 0 ? peakY * ((100 - r) / (100 - peakX)) : 0;
@@ -322,7 +352,6 @@ html_app = """
         const h = chartCanvas.height - padT - padB;
         const yMax = 50;
 
-        // grid + label sumbu
         cctx.strokeStyle = '#262a38'; cctx.fillStyle = '#6b7086'; cctx.font = '10px Segoe UI'; cctx.textAlign = 'right';
         for (let v = 0; v <= yMax; v += 10) {
             let y = padT + h - (v / yMax) * h;
@@ -333,7 +362,6 @@ html_app = """
         function xPos(pct) { return padL + (pct / 100) * w; }
         function yPos(val) { return padT + h - (Math.min(val, yMax) / yMax) * h; }
 
-        // triangle area (kurva potensi kerak)
         cctx.beginPath();
         cctx.moveTo(xPos(0), yPos(0));
         cctx.lineTo(xPos(m.peakX), yPos(m.peakY));
@@ -350,7 +378,6 @@ html_app = """
         cctx.lineTo(xPos(100), yPos(0));
         cctx.strokeStyle = '#818cf8'; cctx.lineWidth = 2; cctx.stroke();
 
-        // marker posisi saat ini
         let mx = xPos(m.r), my = yPos(m.massa);
         cctx.beginPath(); cctx.arc(mx, my, 5, 0, Math.PI * 2);
         cctx.fillStyle = '#f5a623'; cctx.fill();
@@ -361,15 +388,16 @@ html_app = """
     }
 
     function processSystem(m) {
-        let spawnBa = (1 - m.r / 100) * (m.kBa / 100);
+        let spawnFormasi = (1 - m.r / 100) * (m.kBa / 100);
         let spawnSO4 = (m.r / 100) * (m.kSO4 / 100);
 
-        if (Math.random() < spawnBa * 0.9) {
+        if (Math.random() < spawnFormasi * 0.9) {
             let sy = leftStart.y + (Math.random() - 0.5) * 30;
             let sx = leftStart.x + (Math.random() - 0.5) * 20;
             let dx = cX - sx, dy = mergeY - sy;
             let ang = Math.atan2(dy, dx), sp = 2.2 + Math.random() * 1.4;
-            particles.push(new Particle('Ba', sx, sy, Math.cos(ang) * sp, Math.sin(ang) * sp));
+            let ionType = Math.random() < 0.72 ? 'Ba' : 'Sr'; // Ba dominan, Sr minoritas
+            particles.push(new Particle(ionType, sx, sy, Math.cos(ang) * sp, Math.sin(ang) * sp));
         }
         if (Math.random() < spawnSO4 * 0.9) {
             let sy = rightStart.y + (Math.random() - 0.5) * 30;
@@ -379,7 +407,6 @@ html_app = """
             particles.push(new Particle('SO4', sx, sy, Math.cos(ang) * sp, Math.sin(ang) * sp));
         }
 
-        // nukleasi: Ba + SO4 berdekatan di zona percampuran -> jadi kerak
         let nucleationProb = Math.min(m.massa / 50, 1) * 0.6;
         if (nucleationProb > 0) {
             for (let i = 0; i < particles.length; i++) {
@@ -388,14 +415,19 @@ html_app = """
                 for (let j = i + 1; j < particles.length; j++) {
                     let p2 = particles[j];
                     if (!p2.active || p2.type === 'Scale' || p2.y < mergeY - 40) continue;
-                    if (p1.type !== p2.type) {
-                        let dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
-                        if (dist < 16 && Math.random() < nucleationProb) {
-                            p1.active = false; p2.active = false;
-                            let nx = (p1.x + p2.x) / 2, ny = Math.max((p1.y + p2.y) / 2, mergeY);
-                            particles.push(new Particle('Scale', nx, ny, 0, 0));
-                            break;
-                        }
+
+                    let cation = null;
+                    if (p1.type === 'SO4' && (p2.type === 'Ba' || p2.type === 'Sr')) cation = p2.type;
+                    else if (p2.type === 'SO4' && (p1.type === 'Ba' || p1.type === 'Sr')) cation = p1.type;
+                    if (!cation) continue;
+
+                    let dist = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+                    if (dist < 16 && Math.random() < nucleationProb) {
+                        p1.active = false; p2.active = false;
+                        let nx = (p1.x + p2.x) / 2, ny = Math.max((p1.y + p2.y) / 2, mergeY);
+                        let kind = cation === 'Ba' ? 'BaSO4' : 'SrSO4';
+                        particles.push(new Particle('Scale', nx, ny, 0, 0.9, kind));
+                        break;
                     }
                 }
             }
@@ -410,7 +442,7 @@ html_app = """
         else if (m.massa < 30) { laju.innerText = 'Sedang'; laju.style.color = 'var(--warn)'; }
         else { laju.innerText = 'Tinggi'; laju.style.color = 'var(--danger)'; }
 
-        let blockagePct = (maxPile() / (tubeBottom - mergeY - 6)) * 100;
+        let blockagePct = (maxBlockagePx() / (tubeHalf * 2)) * 100;
         let status = document.getElementById('valStatus');
         if (blockagePct < 40) { status.innerText = 'Aman'; status.style.color = 'var(--safe)'; }
         else if (blockagePct < 75) { status.innerText = 'Waspada'; status.style.color = 'var(--warn)'; }
@@ -442,7 +474,8 @@ html_app = """
     });
     document.getElementById('btnReset').addEventListener('click', () => {
         particles = [];
-        pile.fill(0);
+        scaleArrL.fill(0); scaleArrR.fill(0);
+        colorArrL.fill(0); colorArrR.fill(0);
         flashEffect = 20;
     });
 
@@ -452,4 +485,4 @@ html_app = """
 </html>
 """
 
-components.html(html_app, height=900, scrolling=False)
+components.html(html_app, height=1150, scrolling=False)
