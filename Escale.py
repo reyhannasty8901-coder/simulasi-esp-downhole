@@ -116,7 +116,7 @@ html_app = """
     </div>
     
     <div class="footer-note">
-        <b>Catatan Ilmiah:</b> Simulasi ini membandingkan mekanisme kristalisasi secara konseptual. Pada sistem tanpa alat (Atas), tabrakan ion di kondisi supersaturasi memicu pembentukan Calcite yang agresif tumbuh dan melekat di dinding pipa. Saat EMSP aktif (Bawah), medan elektromagnetik menginduksi laju nukleasi masif. Ion yang telah melewati medan elektromagnetik secara eksklusif dipaksa membentuk kristal Aragonite mikroskopis yang kehilangan daya adhesi dan tetap berada dalam fase suspensi (<i>suspended solids</i>), sehingga secara efektif mencegah pertumbuhan deposit kerak baru.
+        <b>Catatan Ilmiah:</b> Simulasi ini membandingkan mekanisme kristalisasi secara konseptual berdasarkan mekanisme yang dijelaskan dalam Lin et al. (2020). Pada sistem tanpa alat (Atas), pada kondisi supersaturasi tinggi, ion-ion bertabrakan dan memicu pembentukan kristal Kalsit (Calcite) yang tumbuh agresif dan membentuk lapisan kerak keras yang melekat kuat di dinding pipa. Saat EMSP aktif (Bawah), medan elektromagnetik menginduksi gaya Lorentz yang memengaruhi ion-ion bermuatan, sehingga mengubah jalur kristalisasi. Ion-ion yang telah melewati medan elektromagnetik secara eksklusif dipaksa membentuk kristal Aragonit (Aragonite) mikroskopis, yang merupakan fase kurang stabil secara termodinamika, sehingga membentuk lapisan yang kurang rapat (<i>less tenacious</i>) dan mudah terbilas oleh aliran fluida. Akibatnya, partikel-partikel ini tetap berada dalam fase suspensi (<i>suspended solids</i>) dan terbawa aliran, sehingga secara efektif mencegah pertumbuhan deposit kerak baru pada dinding pipa (Lin et al., 2020).
     </div>
 
 <script>
