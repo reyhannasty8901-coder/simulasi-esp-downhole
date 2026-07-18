@@ -21,11 +21,17 @@ ditambah parameter laju alir):
      lebih rendah memberi waktu kontak lebih lama dengan medan, sehingga
      efek pergeseran fasa lebih kuat; laju alir tinggi memperlemah efeknya.
 
+  5) Animasi real-time — posisi partikel dianimasikan dengan pola rerun
+     Streamlit (loop "frame -> sleep -> st.rerun()"), sehingga ion/kristal
+     terlihat benar-benar mengalir sepanjang pipa alih-alih gambar statis.
+     Kecepatan animasi mengikuti parameter Laju Alir.
+
 Jalankan dengan:
-    streamlit run simulasi_kinetika_kristalisasi_v2.py
+    streamlit run simulasi_kinetika_kristalisasi_v3.py
 """
 
 import math
+import time
 
 import numpy as np
 import plotly.graph_objects as go
@@ -147,58 +153,84 @@ def label_risiko(lsi, frac_kalsit_aktif):
 
 
 # ----------------------------------------------------------------------
-# GENERATOR PARTIKEL UNTUK VISUALISASI PIPA
+# PARTIKEL PERSISTEN (agar animasi mengalir mulus antar-frame, bukan
+# posisi acak ulang tiap frame)
 # ----------------------------------------------------------------------
-def buat_figur_pipa(rng, frac_kalsit_val, status_on, judul):
-    """Membuat satu panel visualisasi pipa: ion bebas (upstream) -> zona
-    kumparan -> partikel kalsit/aragonit (downstream)."""
+N_PARTIKEL = 56
+TRANSISI_ABU = "#94a3b8"
+
+
+def ambil_basis_partikel(kunci, seed, n=N_PARTIKEL):
+    """Membuat (atau mengambil dari cache session_state) posisi dasar
+    partikel: posisi awal di sepanjang pipa, jitter radial saat fase ion,
+    dan target posisi akhir saat fase kalsit/aragonit. Hanya dibuat ulang
+    saat tombol Reset ditekan (seed berubah)."""
+    cache_key = f"basis_{kunci}"
+    seed_key = f"seed_{kunci}"
+    if cache_key not in st.session_state or st.session_state.get(seed_key) != seed:
+        rng = np.random.default_rng(seed)
+        sisi = rng.choice([-1, 1], n)
+        st.session_state[cache_key] = dict(
+            base_x=rng.uniform(0, 10, n),
+            y_ion=rng.uniform(-0.85, 0.85, n),
+            parity=rng.integers(0, 2, n),          # 0 -> Ca2+, 1 -> CO3 2-
+            rank=rng.random(n),                    # ambang deterministik utk rasio kalsit:aragonit
+            y_final_kalsit=sisi * rng.uniform(0.65, 0.95, n),
+            y_final_arag=rng.uniform(-0.55, 0.55, n),
+        )
+        st.session_state[seed_key] = seed
+    return st.session_state[cache_key]
+
+
+def buat_figur_pipa_animasi(basis, frame, kecepatan, frac_kalsit_val, status_on, judul):
+    """Satu frame animasi: ion mengalir dari kiri, melewati zona kumparan
+    (berubah warna netral = sedang bertransformasi), lalu keluar sebagai
+    kalsit (kotak oranye, menempel dekat dinding) atau aragonit
+    (bulat cyan, tersuspensi di tengah aliran)."""
+    n = N_PARTIKEL
+    x = (basis["base_x"] + frame * kecepatan) % 10.0
+    is_kalsit = basis["rank"] < frac_kalsit_val
+    y_final = np.where(is_kalsit, basis["y_final_kalsit"], basis["y_final_arag"])
+
+    fase_ion = x < 3.0
+    fase_transisi = (x >= 3.0) & (x < 5.0)
+    t = np.clip((x - 3.0) / 2.0, 0, 1)
+
+    y = np.where(fase_ion, basis["y_ion"],
+                 np.where(fase_transisi, basis["y_ion"] * (1 - t) + y_final * t, y_final))
+
+    warna_ion = np.where(basis["parity"] == 0, BLUE, GREEN)
+    warna = np.where(fase_ion, warna_ion,
+                      np.where(fase_transisi, TRANSISI_ABU,
+                               np.where(is_kalsit, ORANGE, CYAN)))
+    simbol = np.where(fase_ion | fase_transisi, "circle",
+                       np.where(is_kalsit, "square", "circle"))
+    ukuran = np.where(fase_ion | fase_transisi, 6, np.where(is_kalsit, 10, 6))
+
     fig = go.Figure()
 
-    # --- ion bebas upstream (Ca2+ & CO3 2-) ---
-    n_ion = 26
-    x_ca = rng.uniform(0.2, 3.0, n_ion)
-    y_ca = rng.uniform(-0.9, 0.9, n_ion)
-    x_co3 = rng.uniform(0.2, 3.0, n_ion)
-    y_co3 = rng.uniform(-0.9, 0.9, n_ion)
-    fig.add_trace(go.Scatter(x=x_ca, y=y_ca, mode="markers",
-                              marker=dict(color=BLUE, size=6, opacity=0.85),
-                              showlegend=False, hoverinfo="skip"))
-    fig.add_trace(go.Scatter(x=x_co3, y=y_co3, mode="markers",
-                              marker=dict(color=GREEN, size=6, opacity=0.85),
-                              showlegend=False, hoverinfo="skip"))
-
-    # --- zona kumparan (3.0 - 5.0) ---
+    # zona kumparan
     fig.add_shape(type="rect", x0=3.0, x1=5.0, y0=-1, y1=1,
                   fillcolor=("rgba(0,229,255,0.10)" if status_on else "rgba(255,255,255,0.04)"),
                   line=dict(width=0))
     if status_on:
         x_wave = np.linspace(3.05, 4.95, 60)
-        y_wave = 0.55 * np.sin(x_wave * 14)
+        y_wave = 0.55 * np.sin(x_wave * 14 - frame * 0.35)
         fig.add_trace(go.Scatter(x=x_wave, y=y_wave, mode="lines",
                                   line=dict(color=CYAN, width=2),
                                   showlegend=False, hoverinfo="skip"))
 
-    # --- downstream: kalsit (menempel dekat dinding) & aragonit (tersuspensi) ---
-    n_down = 42
-    n_kalsit = int(round(n_down * frac_kalsit_val))
-    n_arag = n_down - n_kalsit
-
-    x_k = rng.uniform(5.1, 9.8, n_kalsit)
-    sisi = rng.choice([-1, 1], n_kalsit)
-    y_k = sisi * rng.uniform(0.65, 0.95, n_kalsit)
-    fig.add_trace(go.Scatter(x=x_k, y=y_k, mode="markers",
-                              marker=dict(color=ORANGE, size=9, symbol="square", opacity=0.9),
-                              showlegend=False, hoverinfo="skip"))
-
-    x_a = rng.uniform(5.1, 9.8, n_arag)
-    y_a = rng.uniform(-0.55, 0.55, n_arag)
-    fig.add_trace(go.Scatter(x=x_a, y=y_a, mode="markers",
-                              marker=dict(color=CYAN, size=6, symbol="circle", opacity=0.85),
-                              showlegend=False, hoverinfo="skip"))
-
-    # --- dinding pipa ---
+    # dinding pipa
     fig.add_shape(type="line", x0=0, x1=10, y0=1, y1=1, line=dict(color="#3a4150", width=2))
     fig.add_shape(type="line", x0=0, x1=10, y0=-1, y1=-1, line=dict(color="#3a4150", width=2))
+
+    # satu trace, warna/simbol/ukuran per-titik -> partikel mengalir mulus
+    fig.add_trace(go.Scatter(
+        x=x, y=y, mode="markers",
+        marker=dict(color=warna, size=ukuran, symbol=simbol, opacity=0.9,
+                    line=dict(width=0)),
+        showlegend=False, hoverinfo="skip",
+    ))
 
     fig.update_layout(
         title=dict(text=judul, font=dict(size=12.5, color="white"), x=0.01, xanchor="left"),
@@ -206,6 +238,7 @@ def buat_figur_pipa(rng, frac_kalsit_val, status_on, judul):
         height=190, margin=dict(t=32, b=6, l=6, r=6),
         xaxis=dict(range=[0, 10], showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
         yaxis=dict(range=[-1.15, 1.15], showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
+        uirevision="tetap",  # cegah reset zoom/hover state antar-frame
     )
     return fig
 
@@ -215,6 +248,8 @@ def buat_figur_pipa(rng, frac_kalsit_val, status_on, judul):
 # ----------------------------------------------------------------------
 if "seed_pipa" not in st.session_state:
     st.session_state.seed_pipa = 0
+if "frame" not in st.session_state:
+    st.session_state.frame = 0
 
 # ----------------------------------------------------------------------
 # LAYOUT UTAMA: VISUALISASI (kiri) + PARAMETER (kanan)
@@ -294,16 +329,33 @@ with col_param:
 
     if st.button("🔄 Reset Pipa & Grafik", use_container_width=True):
         st.session_state.seed_pipa += 1
+        st.session_state.frame = 0
 
-# ---------------- PANEL VISUALISASI PIPA ----------------
+# ---------------- PANEL VISUALISASI PIPA (ANIMASI REAL-TIME) ----------------
 with col_viz:
-    rng = np.random.default_rng(st.session_state.seed_pipa)
+    kontrol_a, kontrol_b = st.columns([1, 1])
+    with kontrol_a:
+        animasi_aktif = st.toggle("▶️ Animasi Real-Time", value=False, key="animate_flag")
+    with kontrol_b:
+        kecepatan_anim = st.select_slider(
+            "Kecepatan", options=["0.5×", "1×", "2×"], value="1×", key="speed_mult",
+        )
 
-    fig_off = buat_figur_pipa(rng, frac_off, False, "EMSP: OFF (Calcite Mode)")
-    fig_on = buat_figur_pipa(rng, frac_on, True, "EMSP: ON (Aragonite Mode)")
+    basis_off = ambil_basis_partikel("off", st.session_state.seed_pipa)
+    basis_on = ambil_basis_partikel("on", st.session_state.seed_pipa + 1000)
 
-    st.plotly_chart(fig_off, use_container_width=True, config={"displayModeBar": False})
-    st.plotly_chart(fig_on, use_container_width=True, config={"displayModeBar": False})
+    # kecepatan dasar mengikuti laju alir (fisis) + pengali kecepatan tampilan
+    mult = {"0.5×": 0.5, "1×": 1.0, "2×": 2.0}[kecepatan_anim]
+    kecepatan_frame = (0.08 + laju_alir * 0.10) * mult
+
+    slot_off = st.empty()
+    slot_on = st.empty()
+
+    frame = st.session_state.get("frame", 0)
+    fig_off = buat_figur_pipa_animasi(basis_off, frame, kecepatan_frame, frac_off, False, "EMSP: OFF (Calcite Mode)")
+    fig_on = buat_figur_pipa_animasi(basis_on, frame, kecepatan_frame, frac_on, True, "EMSP: ON (Aragonite Mode)")
+    slot_off.plotly_chart(fig_off, use_container_width=True, config={"displayModeBar": False}, key="pipa_off")
+    slot_on.plotly_chart(fig_on, use_container_width=True, config={"displayModeBar": False}, key="pipa_on")
 
     st.markdown(
         f"""
@@ -475,3 +527,16 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+# ----------------------------------------------------------------------
+# MESIN ANIMASI REAL-TIME
+# ----------------------------------------------------------------------
+# Pola standar animasi di Streamlit: seluruh skrip dijalankan ulang tiap
+# frame lewat st.rerun(), dengan jeda singkat (time.sleep) di antaranya.
+# Widget lain (slider, toggle) tetap responsif karena diproses ulang di
+# awal skrip pada setiap rerun. Animasi berhenti otomatis begitu toggle
+# "Animasi Real-Time" dimatikan.
+if st.session_state.get("animate_flag", False):
+    st.session_state.frame = st.session_state.get("frame", 0) + 1
+    time.sleep(0.06)
+    st.rerun()
