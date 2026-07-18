@@ -161,7 +161,12 @@ _PIPE_ANIM_HTML_TEMPLATE = r"""
 <style>
   :root {
     --bg: #12141c; --panel: #1e212b; --muted: #a0aabf;
-    --cyan: #00e5ff; --orange: #ff9100; --blue: #3b82f6; --green: #10b981;
+    /* Palet sengaja disebar jauh di roda warna supaya ion & kristal
+       tidak pernah mirip satu sama lain: biru - kuning - merah - ungu */
+    --ion-ca: #3b82f6;      /* biru   : ion Ca2+ */
+    --ion-co3: #facc15;     /* kuning : ion CO3 2- */
+    --calcite: #ef4444;     /* merah  : kristal kalsit (menempel, keras) */
+    --aragonite: #a855f7;   /* ungu   : kristal aragonit (tersuspensi) */
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 0; background: transparent; font-family: 'Segoe UI', sans-serif; }
@@ -177,10 +182,10 @@ _PIPE_ANIM_HTML_TEMPLATE = r"""
 <div class="wrap">
   <canvas id="pipeCanvas" width="900" height="400"></canvas>
   <div class="legend-row">
-    <div class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span>Ion Ca&sup2;&spades;</div>
-    <div class="legend-item"><span class="legend-dot" style="background:var(--green);"></span>Ion CO&#8323;&sup2;&spades;</div>
-    <div class="legend-item"><span class="legend-dot" style="background:var(--orange); border-radius:2px;"></span>Calcite (Kerak Melekat)</div>
-    <div class="legend-item"><span class="legend-dot" style="background:var(--cyan);"></span>Aragonite (Tersuspensi)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--ion-ca);"></span>Ion Ca&sup2;&#8314;</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--ion-co3);"></span>Ion CO&#8323;&sup2;&#8315;</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--calcite); border-radius:2px;"></span>Calcite (Kerak Melekat)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--aragonite);"></span>Aragonite (Tersuspensi, terbentuk setelah EMSP)</div>
   </div>
 </div>
 
@@ -191,21 +196,40 @@ const canvas = document.getElementById('pipeCanvas');
 const ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
 
+const COL_CA = '#3b82f6';
+const COL_CO3 = '#facc15';
+const COL_CALCITE = '#ef4444';
+const COL_CALCITE_STUCK = '#b91c1c';
+const COL_ARAGONITE = '#a855f7';
+
 // Dua pipa: atas = referensi OFF (calcite mode), bawah = kondisi EMSP saat ini
+const coilX = 350, coilW = 150;
+const coilEndX = coilX + coilW;
+
 const pipes = [
   { y: 30,  h: 150, isCoilActive: false, frac: CFG.fracOff, label: 'EMSP: OFF (Calcite Mode)' },
   { y: 220, h: 150, isCoilActive: CFG.statusOn, frac: CFG.statusOn ? CFG.fracOn : CFG.fracOff,
     label: CFG.statusOn ? 'EMSP: ON (Aragonite Mode)' : 'EMSP: OFF (Calcite Mode)' },
 ];
 
-const coilX = 350, coilW = 150;
 const flowPx = (0.6 + CFG.flow * 0.9) * CFG.speedMult;   // kecepatan dasar dari Laju Alir (m/s)
 const spawnRate = 0.15 + 0.55 * CFG.drivingNorm;          // dari LSI (potensi presipitasi)
 
+// batas tebal kerak maksimum di tiap sisi (top & bottom) sebelum pipa
+// dianggap tersumbat penuh di posisi x tersebut
+function maxScalePerSide(pipe) { return pipe.h / 2 - 4; }
+
 function makeState() {
-  return { ions: [], crystals: [], scale: new Array(W).fill(0) };
+  return { ions: [], crystals: [], scaleTop: new Array(W).fill(0), scaleBottom: new Array(W).fill(0) };
 }
 pipes.forEach(p => { p.state = makeState(); });
+
+function boundsAt(pipe, x) {
+  const idx = Math.min(W - 1, Math.max(0, Math.floor(x)));
+  const top = pipe.y + 6 + (pipe.state.scaleTop[idx] || 0);
+  const bottom = pipe.y + pipe.h - 6 - (pipe.state.scaleBottom[idx] || 0);
+  return { top, bottom };
+}
 
 class Ion {
   constructor(pipe) {
@@ -220,15 +244,14 @@ class Ion {
     this.x += this.vx;
     this.y += this.vy;
     this.vy += (Math.random() - 0.5) * 0.6;
-    const floor = pipe.y + pipe.h - 6 - (pipe.state.scale[Math.min(W - 1, Math.max(0, Math.floor(this.x)))] || 0);
-    const ceil = pipe.y + 6;
-    if (this.y < ceil) { this.y = ceil; this.vy *= -1; }
-    if (this.y > floor) { this.y = floor; this.vy *= -1; }
+    const b = boundsAt(pipe, this.x);
+    if (this.y < b.top) { this.y = b.top; this.vy *= -1; }
+    if (this.y > b.bottom) { this.y = b.bottom; this.vy *= -1; }
   }
   draw() {
     ctx.beginPath();
     ctx.arc(this.x, this.y, 2.6, 0, Math.PI * 2);
-    ctx.fillStyle = this.type === 'Ca' ? '#3b82f6' : '#10b981';
+    ctx.fillStyle = this.type === 'Ca' ? COL_CA : COL_CO3;
     ctx.fill();
   }
 }
@@ -238,40 +261,54 @@ class Crystal {
     this.isKalsit = isKalsit;
     this.x = x; this.y = y;
     this.size = isKalsit ? 3 : 2;
-    this.vx = flowPx * (isKalsit ? 0.6 : 1.05);
-    this.vy = isKalsit ? 1.0 : (Math.random() - 0.5);
+    this.vx = flowPx * (isKalsit ? 0.55 : 1.05);
+    // kalsit hanyut ke dinding terdekat (atas / bawah), aragonit tetap melayang di tengah aliran
+    this.side = (y - pipe.y) < pipe.h / 2 ? 'top' : 'bottom';
+    this.vy = isKalsit ? (this.side === 'top' ? -1.0 : 1.0) : (Math.random() - 0.5);
     this.stuck = false;
   }
   update(pipe) {
     if (this.stuck) return;
     this.x += this.vx; this.y += this.vy;
     if (this.isKalsit) {
-      if (this.size < 11) { this.size += 0.02; this.vy += 0.05; }
-      const floor = pipe.y + pipe.h - this.size;
-      if (this.y >= floor) {
-        this.stuck = true; this.y = floor;
-        const impactX = Math.floor(this.x);
-        for (let i = Math.max(0, impactX - 10); i < Math.min(W, impactX + 10); i++) {
-          pipe.state.scale[i] += Math.max(0, (10 - Math.abs(impactX - i)) * 0.06);
+      if (this.size < 10) { this.size += 0.02; this.vy += (this.side === 'top' ? -0.05 : 0.05); }
+      const idx = Math.min(W - 1, Math.max(0, Math.floor(this.x)));
+      const maxSide = maxScalePerSide(pipe);
+      if (this.side === 'top') {
+        const wall = pipe.y + this.size + (pipe.state.scaleTop[idx] || 0);
+        if (this.y <= wall) {
+          this.stuck = true; this.y = wall;
+          this._depositTo(pipe, 'scaleTop', maxSide);
+        }
+      } else {
+        const wall = pipe.y + pipe.h - this.size - (pipe.state.scaleBottom[idx] || 0);
+        if (this.y >= wall) {
+          this.stuck = true; this.y = wall;
+          this._depositTo(pipe, 'scaleBottom', maxSide);
         }
       }
-      const ceil = pipe.y + 6;
-      if (this.y < ceil) { this.y = ceil; this.vy *= -1; }
     } else {
-      const floor = pipe.y + pipe.h - 6;
-      const ceil = pipe.y + 6;
-      if (this.y >= floor) { this.y = floor; this.vy *= -1; }
-      if (this.y <= ceil) { this.y = ceil; this.vy *= -1; }
+      // aragonit: tersuspensi, memantul halus di tengah aliran, tidak pernah menempel
+      const b = boundsAt(pipe, this.x);
+      if (this.y >= b.bottom) { this.y = b.bottom; this.vy = -Math.abs(this.vy || 1); }
+      if (this.y <= b.top) { this.y = b.top; this.vy = Math.abs(this.vy || 1); }
+    }
+  }
+  _depositTo(pipe, key, maxSide) {
+    const impactX = Math.floor(this.x);
+    const arr = pipe.state[key];
+    for (let i = Math.max(0, impactX - 10); i < Math.min(W, impactX + 10); i++) {
+      arr[i] = Math.min(maxSide, arr[i] + Math.max(0, (10 - Math.abs(impactX - i)) * 0.06));
     }
   }
   draw() {
     ctx.save();
     ctx.translate(this.x, this.y);
     if (this.isKalsit) {
-      ctx.fillStyle = this.stuck ? '#c96a00' : '#ff9100';
+      ctx.fillStyle = this.stuck ? COL_CALCITE_STUCK : COL_CALCITE;
       ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
     } else {
-      ctx.fillStyle = 'rgba(0, 229, 255, 0.9)';
+      ctx.fillStyle = COL_ARAGONITE;
       ctx.beginPath();
       ctx.ellipse(0, 0, this.size + 1.5, this.size, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -285,27 +322,37 @@ function drawPipeFrame(pipe, t) {
   ctx.beginPath(); ctx.moveTo(0, pipe.y); ctx.lineTo(W, pipe.y); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(0, pipe.y + pipe.h); ctx.lineTo(W, pipe.y + pipe.h); ctx.stroke();
 
-  ctx.fillStyle = '#a0aabf'; ctx.font = '12px Segoe UI';
+  ctx.fillStyle = '#e5e9f0'; ctx.font = 'bold 12.5px Segoe UI';
   ctx.fillText(pipe.label, 6, pipe.y - 8);
 
-  // zona kumparan
-  ctx.fillStyle = pipe.isCoilActive ? 'rgba(0,229,255,0.10)' : 'rgba(255,255,255,0.04)';
+  // zona kumparan EMSP
+  ctx.fillStyle = pipe.isCoilActive ? 'rgba(168,85,247,0.12)' : 'rgba(255,255,255,0.04)';
   ctx.fillRect(coilX, pipe.y, coilW, pipe.h);
   if (pipe.isCoilActive) {
-    ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 1.5;
+    ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 1.5;
     ctx.beginPath();
     for (let i = 0; i <= coilW; i += 4) {
       const yWave = pipe.y + pipe.h / 2 + Math.sin(i * 0.14 - t * 0.15) * (pipe.h * 0.28);
       if (i === 0) ctx.moveTo(coilX + i, yWave); else ctx.lineTo(coilX + i, yWave);
     }
     ctx.stroke();
+    ctx.fillStyle = 'rgba(168,85,247,0.85)'; ctx.font = '10px Segoe UI';
+    ctx.fillText('medan EMSP', coilX + 4, pipe.y + pipe.h + 14);
   }
 
-  // endapan kerak (scale)
-  ctx.fillStyle = '#52360a';
+  // endapan kerak kalsit dari ATAS
+  ctx.fillStyle = '#7f1d1d';
+  ctx.beginPath();
+  ctx.moveTo(0, pipe.y);
+  for (let i = 0; i < W; i++) ctx.lineTo(i, pipe.y + pipe.state.scaleTop[i]);
+  ctx.lineTo(W, pipe.y);
+  ctx.closePath(); ctx.fill();
+
+  // endapan kerak kalsit dari BAWAH
+  ctx.fillStyle = '#7f1d1d';
   ctx.beginPath();
   ctx.moveTo(0, pipe.y + pipe.h);
-  for (let i = 0; i < W; i++) ctx.lineTo(i, pipe.y + pipe.h - pipe.state.scale[i]);
+  for (let i = 0; i < W; i++) ctx.lineTo(i, pipe.y + pipe.h - pipe.state.scaleBottom[i]);
   ctx.lineTo(W, pipe.y + pipe.h);
   ctx.closePath(); ctx.fill();
 }
@@ -326,8 +373,18 @@ function stepPipe(pipe) {
           const dist = Math.hypot(a.x - b.x, a.y - b.y);
           if (dist < 11) {
             a.active = false; b.active = false;
-            const isKalsit = Math.random() > pipe.frac ? false : true;
-            st.crystals.push(new Crystal(pipe, a.x, a.y, isKalsit));
+            const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
+            // ATURAN POSISI: aragonit HANYA bisa terbentuk dari ion yang
+            // sudah melewati zona kumparan EMSP (cx > coilEndX) saat medan
+            // aktif. Sebelum/di dalam kumparan, jalur default tetap kalsit
+            // (belum "disentuh" medan) -- sesuai mekanisme di catatan model.
+            let isKalsit;
+            if (pipe.isCoilActive && cx > coilEndX) {
+              isKalsit = Math.random() < pipe.frac; // sisa kalsit yg lolos dari efek EMSP
+            } else {
+              isKalsit = true;
+            }
+            st.crystals.push(new Crystal(pipe, cx, cy, isKalsit));
             break;
           }
         }
@@ -590,9 +647,11 @@ with tab3:
         fig_ph.add_vline(x=pH, line_dash="dash", line_color="white", opacity=0.4)
         fig_ph.update_layout(
             template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            height=380, margin=dict(t=40, b=10, l=10, r=10), title="Fraksi Kalsit vs pH",
+            height=400, margin=dict(t=50, b=60, l=10, r=10),
+            title=dict(text="Fraksi Kalsit vs pH", x=0.0, xanchor="left", y=0.97, yanchor="top",
+                       font=dict(color="white", size=14)),
             xaxis_title="pH", yaxis_title="Fraksi Kalsit (%)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.05, font=dict(color="white")),
+            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5, font=dict(color="white")),
         )
         st.plotly_chart(fig_ph, use_container_width=True)
 
@@ -611,9 +670,11 @@ with tab3:
         fig_t.add_vline(x=suhu_c, line_dash="dash", line_color="white", opacity=0.4)
         fig_t.update_layout(
             template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-            height=380, margin=dict(t=40, b=10, l=10, r=10), title="Fraksi Kalsit vs Suhu",
+            height=400, margin=dict(t=50, b=60, l=10, r=10),
+            title=dict(text="Fraksi Kalsit vs Suhu", x=0.0, xanchor="left", y=0.97, yanchor="top",
+                       font=dict(color="white", size=14)),
             xaxis_title="Suhu (°C)", yaxis_title="Fraksi Kalsit (%)",
-            legend=dict(orientation="h", yanchor="bottom", y=1.05, font=dict(color="white")),
+            legend=dict(orientation="h", yanchor="top", y=-0.22, xanchor="center", x=0.5, font=dict(color="white")),
         )
         st.plotly_chart(fig_t, use_container_width=True)
 
