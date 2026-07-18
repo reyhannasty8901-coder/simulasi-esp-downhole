@@ -1,41 +1,40 @@
 """
-Simulasi A — Analisis Komparatif: Pembentukan Kerak & EMSP
-============================================================
-Visualisasi pipa/partikel yang menunjukkan hipotesis mekanisme inti
-Electromagnetic Scale Preventer (E-Scale / EMSP): saat medan
-elektromagnetik AKTIF (ON), presipitasi CaCO3 tidak berkurang, tetapi
-jalur kristalisasinya bergeser dari fasa kalsit (keras, menempel di
-dinding pipa) ke fasa aragonit (butiran halus, tersuspensi terbawa
-aliran).
+Simulasi A — Analisis Komparatif: Pembentukan Kerak & EMSP (v4, animasi mulus)
+================================================================================
+Versi ini mempertahankan seluruh model kimia dari versi sebelumnya
+(LSI, aturan tahapan Ostwald, persamaan Avrami, waktu tinggal di
+kumparan), tapi mengganti mesin animasi pipa:
 
-Model kimia yang dipakai (tidak berubah dari versi sebelumnya, hanya
-ditambah parameter laju alir):
-  1) Langelier Saturation Index (LSI) — kecenderungan CaCO3 mengendap
-     berdasarkan pH, suhu, kesadahan kalsium, dan alkalinitas.
-  2) Aturan tahapan Ostwald — presipitasi cepat cenderung membentuk
-     fasa metastabil (aragonit) lebih dulu, yang lama-kelamaan
-     bertransformasi ke fasa stabil (kalsit) kecuali ada gangguan yang
-     menahan transformasi tersebut (medan elektromagnetik).
-  3) Persamaan Avrami — kurva-S pertumbuhan kristal terhadap waktu.
-  4) Waktu tinggal (residence time) di zona kumparan — laju alir yang
-     lebih rendah memberi waktu kontak lebih lama dengan medan, sehingga
-     efek pergeseran fasa lebih kuat; laju alir tinggi memperlemah efeknya.
+  SEBELUMNYA (v3): posisi partikel dihitung di Python -> digambar
+  sebagai satu frame Plotly -> lalu seluruh skrip Streamlit dijalankan
+  ulang lewat st.rerun() untuk menghasilkan frame berikutnya. Pola ini
+  membuat animasi terlihat patah-patah karena setiap frame = reload
+  penuh server + semua widget & chart lain ikut ter-render ulang.
 
-  5) Animasi real-time — posisi partikel dianimasikan dengan pola rerun
-     Streamlit (loop "frame -> sleep -> st.rerun()"), sehingga ion/kristal
-     terlihat benar-benar mengalir sepanjang pipa alih-alih gambar statis.
-     Kecepatan animasi mengikuti parameter Laju Alir.
+  SEKARANG (v4): panel pipa dirender sebagai satu komponen HTML/JS
+  (via streamlit.components.v1.html) yang menggambar di <canvas>
+  memakai requestAnimationFrame — pola animasi standar browser yang
+  berjalan 60fps di sisi klien, tanpa roundtrip ke server Streamlit
+  sama sekali selama animasi berjalan. Streamlit hanya perlu
+  menjalankan ulang skrip saat parameter (slider/toggle) berubah,
+  bukan setiap frame.
+
+  Proporsi kalsit vs aragonit yang dibentuk di dalam animasi tetap
+  ditentukan oleh hasil perhitungan kimia (frac_off, frac_on) dari
+  Python, dikirim ke JavaScript sebagai parameter konfigurasi — jadi
+  visualnya tetap konsisten dengan angka-angka di dashboard.
 
 Jalankan dengan:
-    streamlit run simulasi_kinetika_kristalisasi_v3.py
+    streamlit run simulasi_kinetika_kristalisasi_v4_smooth.py
 """
 
+import json
 import math
-import time
 
 import numpy as np
 import plotly.graph_objects as go
 import streamlit as st
+import streamlit.components.v1 as components
 from plotly.subplots import make_subplots
 
 # ----------------------------------------------------------------------
@@ -68,10 +67,6 @@ st.markdown(
     .metric-value-white {{ color: white; font-weight: 700; }}
     .metric-label {{ color: {MUTED}; font-size: 13px; }}
     .section-title {{ color: white; font-size: 16px; font-weight: 700; margin: 2px 0 10px 0; }}
-    .legend-row {{ display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
-        background-color: {CARD_BG}; padding: 12px 16px; border-radius: 10px; margin-top: 8px; }}
-    .legend-item {{ display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: white; white-space: nowrap; }}
-    .legend-dot {{ width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex-shrink: 0; }}
     .note-box {{
         background-color: {CARD_BG}; border-left: 4px solid {MUTED};
         padding: 12px 16px; border-radius: 8px; color: {MUTED}; font-size: 12px; line-height: 1.55;
@@ -85,7 +80,7 @@ st.markdown(
 st.markdown("<h2 style='text-align:center; color:white;'>Analisis Komparatif: Pembentukan Kerak &amp; EMSP</h2>", unsafe_allow_html=True)
 
 # ----------------------------------------------------------------------
-# FUNGSI PERHITUNGAN KIMIA (sama seperti versi sebelumnya + faktor laju alir)
+# FUNGSI PERHITUNGAN KIMIA (tidak berubah dari versi sebelumnya)
 # ----------------------------------------------------------------------
 def hitung_lsi(pH, suhu_c, ca_hardness_ppm, alkalinity_ppm, tds_ppm=1200.0):
     """Langelier Saturation Index. LSI>0 -> supersaturasi/berpotensi kerak."""
@@ -153,103 +148,237 @@ def label_risiko(lsi, frac_kalsit_aktif):
 
 
 # ----------------------------------------------------------------------
-# PARTIKEL PERSISTEN (agar animasi mengalir mulus antar-frame, bukan
-# posisi acak ulang tiap frame)
+# ANIMASI PIPA — HTML/CANVAS + requestAnimationFrame (MULUS, TANPA st.rerun)
 # ----------------------------------------------------------------------
-N_PARTIKEL = 56
-TRANSISI_ABU = "#94a3b8"
+# Template JS ditulis sebagai string biasa (bukan f-string) supaya kurung
+# kurawal JS tidak bentrok dengan sintaks f-string Python. Parameter dari
+# Python disisipkan lewat satu token JSON: __CFG_JSON__.
+_PIPE_ANIM_HTML_TEMPLATE = r"""
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<style>
+  :root {
+    --bg: #12141c; --panel: #1e212b; --muted: #a0aabf;
+    --cyan: #00e5ff; --orange: #ff9100; --blue: #3b82f6; --green: #10b981;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 0; background: transparent; font-family: 'Segoe UI', sans-serif; }
+  .wrap { display: flex; flex-direction: column; gap: 10px; }
+  canvas { width: 100%; display: block; background: #0d0f16; border-radius: 10px; }
+  .legend-row { display: flex; gap: 22px; flex-wrap: wrap; align-items: center;
+      background-color: var(--panel); padding: 12px 16px; border-radius: 10px; }
+  .legend-item { display: flex; align-items: center; gap: 7px; font-size: 12.5px; color: white; white-space: nowrap; }
+  .legend-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; flex-shrink: 0; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <canvas id="pipeCanvas" width="900" height="400"></canvas>
+  <div class="legend-row">
+    <div class="legend-item"><span class="legend-dot" style="background:var(--blue);"></span>Ion Ca&sup2;&spades;</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--green);"></span>Ion CO&#8323;&sup2;&spades;</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--orange); border-radius:2px;"></span>Calcite (Kerak Melekat)</div>
+    <div class="legend-item"><span class="legend-dot" style="background:var(--cyan);"></span>Aragonite (Tersuspensi)</div>
+  </div>
+</div>
+
+<script>
+const CFG = __CFG_JSON__;
+
+const canvas = document.getElementById('pipeCanvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+// Dua pipa: atas = referensi OFF (calcite mode), bawah = kondisi EMSP saat ini
+const pipes = [
+  { y: 30,  h: 150, isCoilActive: false, frac: CFG.fracOff, label: 'EMSP: OFF (Calcite Mode)' },
+  { y: 220, h: 150, isCoilActive: CFG.statusOn, frac: CFG.statusOn ? CFG.fracOn : CFG.fracOff,
+    label: CFG.statusOn ? 'EMSP: ON (Aragonite Mode)' : 'EMSP: OFF (Calcite Mode)' },
+];
+
+const coilX = 350, coilW = 150;
+const flowPx = (0.6 + CFG.flow * 0.9) * CFG.speedMult;   // kecepatan dasar dari Laju Alir (m/s)
+const spawnRate = 0.15 + 0.55 * CFG.drivingNorm;          // dari LSI (potensi presipitasi)
+
+function makeState() {
+  return { ions: [], crystals: [], scale: new Array(W).fill(0) };
+}
+pipes.forEach(p => { p.state = makeState(); });
+
+class Ion {
+  constructor(pipe) {
+    this.x = Math.random() * 40;
+    this.y = pipe.y + 15 + Math.random() * (pipe.h - 30);
+    this.type = Math.random() > 0.5 ? 'Ca' : 'CO3';
+    this.vx = flowPx * (0.8 + Math.random() * 0.4);
+    this.vy = (Math.random() - 0.5) * 1.2;
+    this.active = true;
+  }
+  update(pipe) {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.vy += (Math.random() - 0.5) * 0.6;
+    const floor = pipe.y + pipe.h - 6 - (pipe.state.scale[Math.min(W - 1, Math.max(0, Math.floor(this.x)))] || 0);
+    const ceil = pipe.y + 6;
+    if (this.y < ceil) { this.y = ceil; this.vy *= -1; }
+    if (this.y > floor) { this.y = floor; this.vy *= -1; }
+  }
+  draw() {
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, 2.6, 0, Math.PI * 2);
+    ctx.fillStyle = this.type === 'Ca' ? '#3b82f6' : '#10b981';
+    ctx.fill();
+  }
+}
+
+class Crystal {
+  constructor(pipe, x, y, isKalsit) {
+    this.isKalsit = isKalsit;
+    this.x = x; this.y = y;
+    this.size = isKalsit ? 3 : 2;
+    this.vx = flowPx * (isKalsit ? 0.6 : 1.05);
+    this.vy = isKalsit ? 1.0 : (Math.random() - 0.5);
+    this.stuck = false;
+  }
+  update(pipe) {
+    if (this.stuck) return;
+    this.x += this.vx; this.y += this.vy;
+    if (this.isKalsit) {
+      if (this.size < 11) { this.size += 0.02; this.vy += 0.05; }
+      const floor = pipe.y + pipe.h - this.size;
+      if (this.y >= floor) {
+        this.stuck = true; this.y = floor;
+        const impactX = Math.floor(this.x);
+        for (let i = Math.max(0, impactX - 10); i < Math.min(W, impactX + 10); i++) {
+          pipe.state.scale[i] += Math.max(0, (10 - Math.abs(impactX - i)) * 0.06);
+        }
+      }
+      const ceil = pipe.y + 6;
+      if (this.y < ceil) { this.y = ceil; this.vy *= -1; }
+    } else {
+      const floor = pipe.y + pipe.h - 6;
+      const ceil = pipe.y + 6;
+      if (this.y >= floor) { this.y = floor; this.vy *= -1; }
+      if (this.y <= ceil) { this.y = ceil; this.vy *= -1; }
+    }
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    if (this.isKalsit) {
+      ctx.fillStyle = this.stuck ? '#c96a00' : '#ff9100';
+      ctx.fillRect(-this.size / 2, -this.size / 2, this.size, this.size);
+    } else {
+      ctx.fillStyle = 'rgba(0, 229, 255, 0.9)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, this.size + 1.5, this.size, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+function drawPipeFrame(pipe, t) {
+  ctx.strokeStyle = '#3a4150'; ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, pipe.y); ctx.lineTo(W, pipe.y); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, pipe.y + pipe.h); ctx.lineTo(W, pipe.y + pipe.h); ctx.stroke();
+
+  ctx.fillStyle = '#a0aabf'; ctx.font = '12px Segoe UI';
+  ctx.fillText(pipe.label, 6, pipe.y - 8);
+
+  // zona kumparan
+  ctx.fillStyle = pipe.isCoilActive ? 'rgba(0,229,255,0.10)' : 'rgba(255,255,255,0.04)';
+  ctx.fillRect(coilX, pipe.y, coilW, pipe.h);
+  if (pipe.isCoilActive) {
+    ctx.strokeStyle = '#00e5ff'; ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    for (let i = 0; i <= coilW; i += 4) {
+      const yWave = pipe.y + pipe.h / 2 + Math.sin(i * 0.14 - t * 0.15) * (pipe.h * 0.28);
+      if (i === 0) ctx.moveTo(coilX + i, yWave); else ctx.lineTo(coilX + i, yWave);
+    }
+    ctx.stroke();
+  }
+
+  // endapan kerak (scale)
+  ctx.fillStyle = '#52360a';
+  ctx.beginPath();
+  ctx.moveTo(0, pipe.y + pipe.h);
+  for (let i = 0; i < W; i++) ctx.lineTo(i, pipe.y + pipe.h - pipe.state.scale[i]);
+  ctx.lineTo(W, pipe.y + pipe.h);
+  ctx.closePath(); ctx.fill();
+}
+
+function stepPipe(pipe) {
+  const st = pipe.state;
+  if (Math.random() < spawnRate && st.ions.length < 90) {
+    st.ions.push(new Ion(pipe));
+  }
+  for (let i = st.ions.length - 1; i >= 0; i--) {
+    const a = st.ions[i];
+    a.update(pipe); a.draw();
+    if (a.x > W) { st.ions.splice(i, 1); continue; }
+    if (a.active) {
+      for (let j = i - 1; j >= 0; j--) {
+        const b = st.ions[j];
+        if (b.active && a.type !== b.type) {
+          const dist = Math.hypot(a.x - b.x, a.y - b.y);
+          if (dist < 11) {
+            a.active = false; b.active = false;
+            const isKalsit = Math.random() > pipe.frac ? false : true;
+            st.crystals.push(new Crystal(pipe, a.x, a.y, isKalsit));
+            break;
+          }
+        }
+      }
+    }
+  }
+  st.ions = st.ions.filter(p => p.active);
+  for (let i = st.crystals.length - 1; i >= 0; i--) {
+    const c = st.crystals[i];
+    c.update(pipe); c.draw();
+    if (c.x > W && !c.stuck) st.crystals.splice(i, 1);
+  }
+}
+
+let frameCount = 0;
+function renderFrame() {
+  ctx.clearRect(0, 0, W, H);
+  pipes.forEach(pipe => drawPipeFrame(pipe, frameCount));
+  pipes.forEach(pipe => stepPipe(pipe));
+  frameCount++;
+}
+
+function loop() {
+  renderFrame();
+  if (CFG.animate) requestAnimationFrame(loop);
+}
+
+if (CFG.animate) {
+  requestAnimationFrame(loop);
+} else {
+  renderFrame(); // gambar satu frame statis saat animasi dijeda
+}
+</script>
+</body>
+</html>
+"""
 
 
-def ambil_basis_partikel(kunci, seed, n=N_PARTIKEL):
-    """Membuat (atau mengambil dari cache session_state) posisi dasar
-    partikel: posisi awal di sepanjang pipa, jitter radial saat fase ion,
-    dan target posisi akhir saat fase kalsit/aragonit. Hanya dibuat ulang
-    saat tombol Reset ditekan (seed berubah)."""
-    cache_key = f"basis_{kunci}"
-    seed_key = f"seed_{kunci}"
-    if cache_key not in st.session_state or st.session_state.get(seed_key) != seed:
-        rng = np.random.default_rng(seed)
-        sisi = rng.choice([-1, 1], n)
-        st.session_state[cache_key] = dict(
-            base_x=rng.uniform(0, 10, n),
-            y_ion=rng.uniform(-0.85, 0.85, n),
-            parity=rng.integers(0, 2, n),          # 0 -> Ca2+, 1 -> CO3 2-
-            rank=rng.random(n),                    # ambang deterministik utk rasio kalsit:aragonit
-            y_final_kalsit=sisi * rng.uniform(0.65, 0.95, n),
-            y_final_arag=rng.uniform(-0.55, 0.55, n),
-        )
-        st.session_state[seed_key] = seed
-    return st.session_state[cache_key]
-
-
-def buat_figur_pipa_animasi(basis, frame, kecepatan, frac_kalsit_val, status_on, judul):
-    """Satu frame animasi: ion mengalir dari kiri, melewati zona kumparan
-    (berubah warna netral = sedang bertransformasi), lalu keluar sebagai
-    kalsit (kotak oranye, menempel dekat dinding) atau aragonit
-    (bulat cyan, tersuspensi di tengah aliran)."""
-    n = N_PARTIKEL
-    x = (basis["base_x"] + frame * kecepatan) % 10.0
-    is_kalsit = basis["rank"] < frac_kalsit_val
-    y_final = np.where(is_kalsit, basis["y_final_kalsit"], basis["y_final_arag"])
-
-    fase_ion = x < 3.0
-    fase_transisi = (x >= 3.0) & (x < 5.0)
-    t = np.clip((x - 3.0) / 2.0, 0, 1)
-
-    y = np.where(fase_ion, basis["y_ion"],
-                 np.where(fase_transisi, basis["y_ion"] * (1 - t) + y_final * t, y_final))
-
-    warna_ion = np.where(basis["parity"] == 0, BLUE, GREEN)
-    warna = np.where(fase_ion, warna_ion,
-                      np.where(fase_transisi, TRANSISI_ABU,
-                               np.where(is_kalsit, ORANGE, CYAN)))
-    simbol = np.where(fase_ion | fase_transisi, "circle",
-                       np.where(is_kalsit, "square", "circle"))
-    ukuran = np.where(fase_ion | fase_transisi, 6, np.where(is_kalsit, 10, 6))
-
-    fig = go.Figure()
-
-    # zona kumparan
-    fig.add_shape(type="rect", x0=3.0, x1=5.0, y0=-1, y1=1,
-                  fillcolor=("rgba(0,229,255,0.10)" if status_on else "rgba(255,255,255,0.04)"),
-                  line=dict(width=0))
-    if status_on:
-        x_wave = np.linspace(3.05, 4.95, 60)
-        y_wave = 0.55 * np.sin(x_wave * 14 - frame * 0.35)
-        fig.add_trace(go.Scatter(x=x_wave, y=y_wave, mode="lines",
-                                  line=dict(color=CYAN, width=2),
-                                  showlegend=False, hoverinfo="skip"))
-
-    # dinding pipa
-    fig.add_shape(type="line", x0=0, x1=10, y0=1, y1=1, line=dict(color="#3a4150", width=2))
-    fig.add_shape(type="line", x0=0, x1=10, y0=-1, y1=-1, line=dict(color="#3a4150", width=2))
-
-    # satu trace, warna/simbol/ukuran per-titik -> partikel mengalir mulus
-    fig.add_trace(go.Scatter(
-        x=x, y=y, mode="markers",
-        marker=dict(color=warna, size=ukuran, symbol=simbol, opacity=0.9,
-                    line=dict(width=0)),
-        showlegend=False, hoverinfo="skip",
-    ))
-
-    fig.update_layout(
-        title=dict(text=judul, font=dict(size=12.5, color="white"), x=0.01, xanchor="left"),
-        template="plotly_dark", plot_bgcolor="rgba(0,0,0,0)", paper_bgcolor="rgba(0,0,0,0)",
-        height=190, margin=dict(t=32, b=6, l=6, r=6),
-        xaxis=dict(range=[0, 10], showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
-        yaxis=dict(range=[-1.15, 1.15], showgrid=False, showticklabels=False, zeroline=False, fixedrange=True),
-        uirevision="tetap",  # cegah reset zoom/hover state antar-frame
+def render_animasi_pipa(frac_off, frac_on, laju_alir, driving_norm, status_on, animate, speed_mult):
+    cfg = dict(
+        fracOff=round(frac_off, 4),
+        fracOn=round(frac_on, 4),
+        flow=round(laju_alir, 3),
+        drivingNorm=round(driving_norm, 4),
+        statusOn=bool(status_on),
+        animate=bool(animate),
+        speedMult=round(speed_mult, 3),
     )
-    return fig
+    html = _PIPE_ANIM_HTML_TEMPLATE.replace("__CFG_JSON__", json.dumps(cfg))
+    components.html(html, height=440, scrolling=False)
 
-
-# ----------------------------------------------------------------------
-# STATE UNTUK TOMBOL RESET (mengacak ulang posisi partikel)
-# ----------------------------------------------------------------------
-if "seed_pipa" not in st.session_state:
-    st.session_state.seed_pipa = 0
-if "frame" not in st.session_state:
-    st.session_state.frame = 0
 
 # ----------------------------------------------------------------------
 # LAYOUT UTAMA: VISUALISASI (kiri) + PARAMETER (kanan)
@@ -327,56 +456,45 @@ with col_param:
         unsafe_allow_html=True,
     )
 
+    if "reset_key" not in st.session_state:
+        st.session_state.reset_key = 0
     if st.button("🔄 Reset Pipa & Grafik", use_container_width=True):
-        st.session_state.seed_pipa += 1
-        st.session_state.frame = 0
+        st.session_state.reset_key += 1
 
-# ---------------- PANEL VISUALISASI PIPA (ANIMASI REAL-TIME) ----------------
+# ---------------- PANEL VISUALISASI PIPA (ANIMASI HTML/CANVAS, MULUS) ----------------
 with col_viz:
     kontrol_a, kontrol_b = st.columns([1, 1])
     with kontrol_a:
-        animasi_aktif = st.toggle("▶️ Animasi Real-Time", value=False, key="animate_flag")
+        animasi_aktif = st.toggle("▶️ Animasi Real-Time", value=True, key="animate_flag")
     with kontrol_b:
         kecepatan_anim = st.select_slider(
             "Kecepatan", options=["0.5×", "1×", "2×"], value="1×", key="speed_mult",
         )
-
-    basis_off = ambil_basis_partikel("off", st.session_state.seed_pipa)
-    basis_on = ambil_basis_partikel("on", st.session_state.seed_pipa + 1000)
-
-    # kecepatan dasar mengikuti laju alir (fisis) + pengali kecepatan tampilan
     mult = {"0.5×": 0.5, "1×": 1.0, "2×": 2.0}[kecepatan_anim]
-    kecepatan_frame = (0.08 + laju_alir * 0.10) * mult
+    driving_norm = min(max(lsi, 0.0) / 2.0, 1.0)
 
-    slot_off = st.empty()
-    slot_on = st.empty()
-
-    frame = st.session_state.get("frame", 0)
-    fig_off = buat_figur_pipa_animasi(basis_off, frame, kecepatan_frame, frac_off, False, "EMSP: OFF (Calcite Mode)")
-    fig_on = buat_figur_pipa_animasi(basis_on, frame, kecepatan_frame, frac_on, True, "EMSP: ON (Aragonite Mode)")
-    slot_off.plotly_chart(fig_off, use_container_width=True, config={"displayModeBar": False}, key="pipa_off")
-    slot_on.plotly_chart(fig_on, use_container_width=True, config={"displayModeBar": False}, key="pipa_on")
-
-    st.markdown(
-        f"""
-        <div class='legend-row'>
-            <div class='legend-item'><span class='legend-dot' style='background:{BLUE};'></span>Ion Ca²⁺</div>
-            <div class='legend-item'><span class='legend-dot' style='background:{GREEN};'></span>Ion CO₃²⁻</div>
-            <div class='legend-item'><span class='legend-dot' style='background:{ORANGE};'></span>Calcite (Kerak Melekat)</div>
-            <div class='legend-item'><span class='legend-dot' style='background:{CYAN};'></span>Aragonite (Tersuspensi)</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
+    # reset_key dipakai sebagai bagian dari key komponen supaya tombol Reset
+    # memaksa Streamlit membuat ulang komponen HTML (state partikel di JS mulai
+    # dari nol lagi), tanpa perlu re-render server tiap frame.
+    render_animasi_pipa(
+        frac_off=frac_off,
+        frac_on=frac_on,
+        laju_alir=laju_alir,
+        driving_norm=driving_norm,
+        status_on=status_on,
+        animate=animasi_aktif,
+        speed_mult=mult,
     )
 
-    st.markdown("<div class='progress-label' style='margin-top:14px;'>Perkembangan Kerak (OFF)</div>", unsafe_allow_html=True)
+    st.markdown("<div class='progress-label' style='margin-top:6px;'>Perkembangan Kerak (OFF)</div>", unsafe_allow_html=True)
     st.progress(frac_off, text=f"{frac_off*100:.0f}% menuju kerak keras")
 
     st.markdown("<div class='progress-label' style='margin-top:8px;'>Suspensi Aragonit (ON)</div>", unsafe_allow_html=True)
     st.progress(1 - frac_on, text=f"{(1-frac_on)*100:.0f}% tersuspensi & terbawa aliran")
 
 # ----------------------------------------------------------------------
-# ANALISIS LANJUTAN (mempertahankan seluruh output versi sebelumnya)
+# ANALISIS LANJUTAN (tidak berubah dari versi sebelumnya — chart statis,
+# tidak butuh animasi real-time, jadi tetap pakai Plotly biasa)
 # ----------------------------------------------------------------------
 st.markdown("<div class='section-title' style='margin-top:22px;'>Analisis Lanjutan</div>", unsafe_allow_html=True)
 tab1, tab2, tab3 = st.tabs(["⚖️ Rasio Kalsit vs Aragonit", "📈 Kinetika Kristalisasi", "🔬 Sensitivitas pH & Suhu"])
@@ -527,16 +645,3 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
-
-# ----------------------------------------------------------------------
-# MESIN ANIMASI REAL-TIME
-# ----------------------------------------------------------------------
-# Pola standar animasi di Streamlit: seluruh skrip dijalankan ulang tiap
-# frame lewat st.rerun(), dengan jeda singkat (time.sleep) di antaranya.
-# Widget lain (slider, toggle) tetap responsif karena diproses ulang di
-# awal skrip pada setiap rerun. Animasi berhenti otomatis begitu toggle
-# "Animasi Real-Time" dimatikan.
-if st.session_state.get("animate_flag", False):
-    st.session_state.frame = st.session_state.get("frame", 0) + 1
-    time.sleep(0.06)
-    st.rerun()
