@@ -202,15 +202,23 @@ const COL_CALCITE = '#ef4444';
 const COL_CALCITE_STUCK = '#b91c1c';
 const COL_ARAGONITE = '#a855f7';
 
-// Dua pipa: atas = referensi OFF (calcite mode), bawah = kondisi EMSP saat ini
-const coilX = 350, coilW = 150;
-const coilEndX = coilX + coilW;
-
+// Dua pipa: atas = referensi OFF (calcite mode), bawah = kondisi EMSP saat ini.
+// Posisi kumparan BERBEDA per pipa:
+//  - OFF : kumparan digambar redup di tengah hanya sebagai referensi visual
+//          (tidak aktif, tidak memengaruhi apa pun -- sistem ini memang
+//          tidak dipasangi EMSP).
+//  - ON  : kumparan dipasang DEKAT AWAL pipa (kiri), sehingga hampir
+//          seluruh panjang pipa berada di zona "pasca-EMSP" -> ion yang
+//          bertabrakan sepanjang sisa pipa langsung membentuk aragonit,
+//          dan kerak kalsit praktis tidak sempat menumpuk di dinding.
 const pipes = [
-  { y: 30,  h: 150, isCoilActive: false, frac: CFG.fracOff, label: 'EMSP: OFF (Calcite Mode)' },
+  { y: 30,  h: 150, isCoilActive: false, frac: CFG.fracOff, label: 'EMSP: OFF (Calcite Mode)',
+    coilX: 350, coilW: 150 },
   { y: 220, h: 150, isCoilActive: CFG.statusOn, frac: CFG.statusOn ? CFG.fracOn : CFG.fracOff,
-    label: CFG.statusOn ? 'EMSP: ON (Aragonite Mode)' : 'EMSP: OFF (Calcite Mode)' },
+    label: CFG.statusOn ? 'EMSP: ON (Aragonite Mode)' : 'EMSP: OFF (Calcite Mode)',
+    coilX: CFG.statusOn ? 45 : 350, coilW: CFG.statusOn ? 110 : 150 },
 ];
+pipes.forEach(p => { p.coilEndX = p.coilX + p.coilW; });
 
 const flowPx = (0.6 + CFG.flow * 0.9) * CFG.speedMult;   // kecepatan dasar dari Laju Alir (m/s)
 const spawnRate = 0.15 + 0.55 * CFG.drivingNorm;          // dari LSI (potensi presipitasi)
@@ -327,17 +335,17 @@ function drawPipeFrame(pipe, t) {
 
   // zona kumparan EMSP
   ctx.fillStyle = pipe.isCoilActive ? 'rgba(168,85,247,0.12)' : 'rgba(255,255,255,0.04)';
-  ctx.fillRect(coilX, pipe.y, coilW, pipe.h);
+  ctx.fillRect(pipe.coilX, pipe.y, pipe.coilW, pipe.h);
   if (pipe.isCoilActive) {
     ctx.strokeStyle = '#a855f7'; ctx.lineWidth = 1.5;
     ctx.beginPath();
-    for (let i = 0; i <= coilW; i += 4) {
+    for (let i = 0; i <= pipe.coilW; i += 4) {
       const yWave = pipe.y + pipe.h / 2 + Math.sin(i * 0.14 - t * 0.15) * (pipe.h * 0.28);
-      if (i === 0) ctx.moveTo(coilX + i, yWave); else ctx.lineTo(coilX + i, yWave);
+      if (i === 0) ctx.moveTo(pipe.coilX + i, yWave); else ctx.lineTo(pipe.coilX + i, yWave);
     }
     ctx.stroke();
     ctx.fillStyle = 'rgba(168,85,247,0.85)'; ctx.font = '10px Segoe UI';
-    ctx.fillText('medan EMSP', coilX + 4, pipe.y + pipe.h + 14);
+    ctx.fillText('medan EMSP', pipe.coilX + 4, pipe.y + pipe.h + 14);
   }
 
   // endapan kerak kalsit dari ATAS
@@ -379,7 +387,7 @@ function stepPipe(pipe) {
             // aktif. Sebelum/di dalam kumparan, jalur default tetap kalsit
             // (belum "disentuh" medan) -- sesuai mekanisme di catatan model.
             let isKalsit;
-            if (pipe.isCoilActive && cx > coilEndX) {
+            if (pipe.isCoilActive && cx > pipe.coilEndX) {
               isKalsit = Math.random() < pipe.frac; // sisa kalsit yg lolos dari efek EMSP
             } else {
               isKalsit = true;
