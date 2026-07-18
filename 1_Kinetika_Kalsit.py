@@ -216,7 +216,7 @@ const pipes = [
     coilX: 350, coilW: 150 },
   { y: 220, h: 150, isCoilActive: CFG.statusOn, frac: CFG.statusOn ? CFG.fracOn : CFG.fracOff,
     label: CFG.statusOn ? 'EMSP: ON (Aragonite Mode)' : 'EMSP: OFF (Calcite Mode)',
-    coilX: CFG.statusOn ? 45 : 350, coilW: CFG.statusOn ? 110 : 150 },
+    coilX: CFG.statusOn ? 8 : 350, coilW: CFG.statusOn ? 130 : 150 },
 ];
 pipes.forEach(p => { p.coilEndX = p.coilX + p.coilW; });
 
@@ -382,12 +382,11 @@ function stepPipe(pipe) {
           if (dist < 11) {
             a.active = false; b.active = false;
             const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
-            // ATURAN POSISI: aragonit HANYA bisa terbentuk dari ion yang
-            // sudah melewati zona kumparan EMSP (cx > coilEndX) saat medan
-            // aktif. Sebelum/di dalam kumparan, jalur default tetap kalsit
-            // (belum "disentuh" medan) -- sesuai mekanisme di catatan model.
+            // ATURAN POSISI: begitu ion MEMASUKI zona kumparan (cx > pipe.coilX)
+            // dan medan aktif, ia sudah kena gaya Lorentz -> jalur aragonit.
+            // Sebelum mencapai kumparan sama sekali, jalur default tetap kalsit.
             let isKalsit;
-            if (pipe.isCoilActive && cx > pipe.coilEndX) {
+            if (pipe.isCoilActive && cx > pipe.coilX) {
               isKalsit = Math.random() < pipe.frac; // sisa kalsit yg lolos dari efek EMSP
             } else {
               isKalsit = true;
