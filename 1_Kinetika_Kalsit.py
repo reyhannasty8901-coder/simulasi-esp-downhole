@@ -265,20 +265,22 @@ class Ion {
 }
 
 class Crystal {
-  constructor(pipe, x, y, isKalsit) {
+  constructor(pipe, x, y, isKalsit, canStick) {
     this.isKalsit = isKalsit;
+    this.canStick = canStick; // false utk apa pun yg terbentuk pasca-kumparan EMSP
     this.x = x; this.y = y;
     this.size = isKalsit ? 3 : 2;
-    this.vx = flowPx * (isKalsit ? 0.55 : 1.05);
-    // kalsit hanyut ke dinding terdekat (atas / bawah), aragonit tetap melayang di tengah aliran
+    this.vx = flowPx * (isKalsit && canStick ? 0.55 : 1.05);
+    // kalsit yang BISA menempel hanyut ke dinding terdekat (atas / bawah);
+    // selain itu (aragonit, atau kalsit pasca-EMSP) tetap melayang di tengah aliran
     this.side = (y - pipe.y) < pipe.h / 2 ? 'top' : 'bottom';
-    this.vy = isKalsit ? (this.side === 'top' ? -1.0 : 1.0) : (Math.random() - 0.5);
+    this.vy = (isKalsit && canStick) ? (this.side === 'top' ? -1.0 : 1.0) : (Math.random() - 0.5);
     this.stuck = false;
   }
   update(pipe) {
     if (this.stuck) return;
     this.x += this.vx; this.y += this.vy;
-    if (this.isKalsit) {
+    if (this.isKalsit && this.canStick) {
       if (this.size < 10) { this.size += 0.02; this.vy += (this.side === 'top' ? -0.05 : 0.05); }
       const idx = Math.min(W - 1, Math.max(0, Math.floor(this.x)));
       const maxSide = maxScalePerSide(pipe);
@@ -296,7 +298,8 @@ class Crystal {
         }
       }
     } else {
-      // aragonit: tersuspensi, memantul halus di tengah aliran, tidak pernah menempel
+      // tersuspensi (aragonit ATAU kalsit pasca-EMSP yg gagal melekat):
+      // memantul halus di tengah aliran, tidak pernah menempel
       const b = boundsAt(pipe, this.x);
       if (this.y >= b.bottom) { this.y = b.bottom; this.vy = -Math.abs(this.vy || 1); }
       if (this.y <= b.top) { this.y = b.top; this.vy = Math.abs(this.vy || 1); }
@@ -383,15 +386,22 @@ function stepPipe(pipe) {
             a.active = false; b.active = false;
             const cx = (a.x + b.x) / 2, cy = (a.y + b.y) / 2;
             // ATURAN POSISI: begitu ion MEMASUKI zona kumparan (cx > pipe.coilX)
-            // dan medan aktif, ia sudah kena gaya Lorentz -> jalur aragonit.
-            // Sebelum mencapai kumparan sama sekali, jalur default tetap kalsit.
-            let isKalsit;
+            // dan medan aktif, ia sudah kena gaya Lorentz. Apa pun yang
+            // terbentuk sesudah titik itu -- baik aragonit maupun sisa
+            // kalsit yang belum sempat berubah polimorf -- SAMA-SAMA tidak
+            // sempat menempel ke dinding (medan mengganggu proses
+            // adhesi/nukleasi di permukaan), sehingga tetap terbawa aliran.
+            // Sebelum mencapai kumparan sama sekali, jalur default tetap
+            // kalsit yang menempel normal seperti sistem tanpa EMSP.
+            let isKalsit, canStick;
             if (pipe.isCoilActive && cx > pipe.coilX) {
-              isKalsit = Math.random() < pipe.frac; // sisa kalsit yg lolos dari efek EMSP
+              isKalsit = Math.random() < pipe.frac; // proporsi polimorf tetap ikut hitungan kimia
+              canStick = false;                     // tapi tidak ada yg menempel pasca-EMSP
             } else {
               isKalsit = true;
+              canStick = true;
             }
-            st.crystals.push(new Crystal(pipe, cx, cy, isKalsit));
+            st.crystals.push(new Crystal(pipe, cx, cy, isKalsit, canStick));
             break;
           }
         }
