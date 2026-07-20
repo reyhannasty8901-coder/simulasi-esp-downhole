@@ -191,7 +191,7 @@ with col_param:
     well_depth = st.slider("Kedalaman ESP (m)", 200, 4000, 2000, step=50)
 
     material = st.radio("Material Pipa/Tubing (Skenario A & B)",
-                         ["Non-Metal (PVC/HDPE)", "Metal (Baja/Casing)"], index=1)
+                         ["Non-Metal (PVC/HDPE)", "Metal (Baja/Casing)"], index=0)
     is_metal = material.startswith("Metal")
     wall_thickness = 8.0
     if is_metal:
@@ -450,7 +450,7 @@ function buildWell(canvasId, badgeId, sc) {
 
   function drawWaveCenter() {
     // gelombang zigzag ungu di tengah, amplitudo & alpha ikut kurva intensitas
-    ctx.lineWidth = 2.6;
+    ctx.lineWidth = 3.4;
     ctx.beginPath();
     let started = false;
     for (let y = y0; y <= y1; y += 3) {
@@ -462,19 +462,20 @@ function buildWell(canvasId, badgeId, sc) {
       if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
     }
     ctx.strokeStyle = sc.color;
-    ctx.globalAlpha = 0.85;
+    ctx.globalAlpha = 0.95;
     ctx.stroke();
     ctx.globalAlpha = 1;
 
-    // titik-titik pulsa mengikuti gelombang turun (memperkuat kesan arah rambat)
+    // titik-titik pulsa kecil & jarang, sekadar penanda arah rambat -
+    // TIDAK boleh menutupi garis ungu di bawahnya
     pulses.forEach((p) => {
       const inten = intensityFromCurve(sc.curve, p.t);
       if (inten > 0.01) {
         const y = y0 + p.t * (y1 - y0);
         const amp = (tubeW * 0.30) * Math.pow(inten, 0.35);
         const x = cx + Math.sin(y * 0.09 - frame * 0.10) * amp;
-        ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${Math.min(1, inten * 1.2 + 0.15)})`;
+        ctx.beginPath(); ctx.arc(x, y, 2.1, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.8, inten * 0.85 + 0.05)})`;
         ctx.fill();
       }
     });
@@ -601,7 +602,7 @@ function buildWell(canvasId, badgeId, sc) {
   }
 
   function update() {
-    if (Math.random() < 0.5) spawnPulse();
+    if (isWave && frame % 14 === 0) spawnPulse();
     pulses.forEach((p) => { p.t += p.speed; });
     for (let i = pulses.length - 1; i >= 0; i--) if (pulses[i].t >= 1) pulses.splice(i, 1);
 
