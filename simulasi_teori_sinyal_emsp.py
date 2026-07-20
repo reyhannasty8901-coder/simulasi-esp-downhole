@@ -4,18 +4,21 @@ Simulasi Interaktif — Apakah Sinyal EMSP Benar-Benar Mencapai ESP?  (v3)
 PERUBAHAN DARI v2:
   - Animasi sekarang BERBEDA SECARA VISUAL sesuai mekanisme masing-masing
     skenario (bukan cuma beda warna strip):
-      * Skenario A & B -> mode "wave": gelombang zigzag ungu di TENGAH
-        fluida. A: amplitudo relatif konstan dari atas ke ESP.
-        B: amplitudo & opasitas mengecil mengikuti kurva redaman yang
-        SAMA seperti dihitung di v2 (skin effect) sampai nyaris hilang.
+      * Skenario A & B -> mode "wave": gelombang zigzag UNGU di TENGAH
+        fluida (satu keluarga warna karena mekanisme fisiknya sama:
+        rambatan lewat brine). A: amplitudo relatif konstan dari atas
+        ke ESP. B: amplitudo & opasitas mengecil mengikuti kurva
+        redaman yang SAMA seperti dihitung di v2 (skin effect) sampai
+        nyaris hilang sebelum ESP.
       * Skenario C -> mode "wall": TIDAK ADA gelombang di tengah.
-        Diganti dua garis putus-putus biru yang menempel di dinding
+        Diganti dua garis putus-putus BIRU yang menempel di dinding
         tubing/casing (menggambarkan konduksi logam), dengan glow di
         dinding & panah kecil sesekali ke arah fluida.
   - Ion (Ca2+, Ba2+, Sr2+, HCO3-, SO4 2-) divisualisasikan sebagai
     partikel kecil berwarna yang bergetar sesuai kekuatan medan lokal:
       * Mode "wave": ion di SELURUH penampang fluida bergetar mengikuti
-        intensitas di kedalaman itu.
+        intensitas di kedalaman itu (A: bergetar merata; B: kuat di
+        atas, meluruh ke bawah).
       * Mode "wall": HANYA ion dekat dinding yang bergetar; ion di
         tengah tetap tenang mengikuti aliran, berapa pun kedalamannya.
   - Kartu "hipotesis" ditambahkan di bawah animasi untuk tiap skenario,
@@ -43,6 +46,7 @@ CYAN = "#00e5ff"
 BLUE = "#3b82f6"
 ORANGE = "#ff9100"
 PURPLE = "#a855f7"
+VIOLET = "#c084fc"  # ungu muda -> dipakai skenario B (satu keluarga warna dg A)
 GREEN = "#10b981"
 RED = "#ef4444"
 GRAY = "#5b6470"
@@ -60,12 +64,15 @@ st.markdown(
     }}
     .border-cyan {{ border-left: 4px solid {CYAN}; }}
     .border-purple {{ border-left: 4px solid {PURPLE}; }}
+    .border-violet {{ border-left: 4px solid {VIOLET}; }}
     .border-blue {{ border-left: 4px solid {BLUE}; }}
     .border-green {{ border-left: 4px solid {GREEN}; }}
     .border-red {{ border-left: 4px solid {RED}; }}
     .metric-row {{ display: flex; justify-content: space-between; margin-bottom: 6px; font-size: 14px; }}
     .metric-value-cyan {{ color: {CYAN}; font-weight: 700; }}
     .metric-value-purple {{ color: {PURPLE}; font-weight: 700; }}
+    .metric-value-violet {{ color: {VIOLET}; font-weight: 700; }}
+    .metric-value-blue {{ color: {BLUE}; font-weight: 700; }}
     .metric-value-green {{ color: {GREEN}; font-weight: 700; }}
     .metric-value-white {{ color: white; font-weight: 700; }}
     .metric-label {{ color: {MUTED}; font-size: 13px; }}
@@ -261,9 +268,9 @@ with col_param:
     )
     st.markdown(
         f"""
-        <div class='metric-card border-green'>
+        <div class='metric-card border-blue'>
             <div class='metric-label'>C: Redaman Maks agar Realistis</div>
-            <div style='font-size:19px; font-weight:800; color:{GREEN};'>{atten_required:.2f} dB/km</div>
+            <div style='font-size:19px; font-weight:800; color:{BLUE};'>{atten_required:.2f} dB/km</div>
             <div class='metric-label'>Slidermu: <b style='color:white;'>{atten_db_km:.1f} dB/km</b></div>
         </div>
         """,
@@ -285,10 +292,10 @@ with col_viz:
     st.markdown(
         f"""
         <div style='display:flex; gap:20px; flex-wrap:wrap; margin-bottom:10px; padding:10px 14px; background:{CARD_BG}; border-radius:8px;'>
-            <div class='legend-item'><span class='legend-dot' style='background:{PURPLE};'></span>Gelombang EM (A &amp; B)</div>
-            <div class='legend-item'><span class='legend-dot' style='background:{BLUE};'></span>Konduksi lewat logam (C)</div>
+            <div class='legend-item'><span class='legend-dot' style='background:{PURPLE};'></span>Gelombang EM lewat brine (A &amp; B)</div>
+            <div class='legend-item'><span class='legend-dot' style='background:{BLUE};'></span>Konduksi lewat logam tubing/casing (C)</div>
             {ion_legend_html}
-            <div class='legend-item'><span class='legend-dot' style='background:{PURPLE};'></span>Aragonit (lunak, aman)</div>
+            <div class='legend-item'><span class='legend-dot' style='background:{PURPLE};'></span>Aragonit (lunak, melayang, aman)</div>
             <div class='legend-item'><span class='legend-sq' style='background:{RED};'></span>Kalsit (keras, menumpuk)</div>
         </div>
         """,
@@ -634,6 +641,13 @@ function buildWell(canvasId, badgeId, sc) {
     badge.style.background = protectedWell ? 'rgba(16,185,129,0.15)' : 'rgba(255,145,0,0.12)';
     badge.style.color = protectedWell ? '#34d399' : '#ffb454';
     badge.style.border = protectedWell ? '1px solid #10b981' : '1px solid #ff9100';
+  } else if (sc.id === 'C') {
+    badge.textContent = protectedWell
+      ? '\u2713 Terlindungi (JIKA bonded)'
+      : '\u2715 Tidak terlindungi';
+    badge.style.background = protectedWell ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)';
+    badge.style.color = protectedWell ? '#34d399' : '#f87171';
+    badge.style.border = protectedWell ? '1px solid #10b981' : '1px solid #ef4444';
   } else if (protectedWell) {
     badge.textContent = '\u2713 ESP TERLINDUNGI';
     badge.style.background = 'rgba(16,185,129,0.15)'; badge.style.color = '#34d399';
@@ -660,13 +674,16 @@ def render_well_comparison(scenarios, well_depth_m, threshold_frac, ion_colors):
     components.html(html, height=650, scrolling=False)
 
 
+# Pemetaan warna per skenario (disamakan dengan legenda di atas):
+#   A & B -> keluarga UNGU (mekanisme sama: gelombang lewat brine)
+#   C     -> BIRU (mekanisme berbeda: konduksi lewat logam tubing/casing)
 scenarios_payload = [
     {"id": "A", "title": "SKENARIO A", "subtitle": "Hipotesis vendor (belum terverifikasi)",
      "mode": "wave", "color": PURPLE, "curve": curve_A, "finalIntensity": final_A},
     {"id": "B", "title": "SKENARIO B", "subtitle": "Teori elektromagnetika (atenuasi oleh brine)",
-     "mode": "wave", "color": BLUE, "curve": curve_B, "finalIntensity": final_B},
+     "mode": "wave", "color": VIOLET, "curve": curve_B, "finalIntensity": final_B},
     {"id": "C", "title": "SKENARIO C", "subtitle": f"Konduksi logam {'(bonded)' if bonded else '(TIDAK bonded)'}",
-     "mode": "wall", "color": GREEN, "curve": curve_C, "finalIntensity": final_C},
+     "mode": "wall", "color": BLUE, "curve": curve_C, "finalIntensity": final_C},
 ]
 
 with col_viz:
@@ -679,13 +696,13 @@ with col_viz:
                 <div class='metric-label'>Sinyal di ESP — A</div>
                 <div style='font-size:18px; font-weight:800; color:{PURPLE};'>{fmt_frac_pct(final_A)}</div>
             </div>
-            <div class='metric-card border-blue' style='flex:1; text-align:center;'>
+            <div class='metric-card border-violet' style='flex:1; text-align:center;'>
                 <div class='metric-label'>Sinyal di ESP — B</div>
-                <div style='font-size:18px; font-weight:800; color:{BLUE};'>{fmt_frac_pct(final_B)}</div>
+                <div style='font-size:18px; font-weight:800; color:{VIOLET};'>{fmt_frac_pct(final_B)}</div>
             </div>
-            <div class='metric-card border-green' style='flex:1; text-align:center;'>
+            <div class='metric-card border-blue' style='flex:1; text-align:center;'>
                 <div class='metric-label'>Sinyal di ESP — C</div>
-                <div style='font-size:18px; font-weight:800; color:{GREEN};'>{fmt_frac_pct(final_C)}</div>
+                <div style='font-size:18px; font-weight:800; color:{BLUE};'>{fmt_frac_pct(final_C)}</div>
             </div>
         </div>
         """,
@@ -703,10 +720,12 @@ with c1:
         f"""
         <div class='hip-card' style='border-top:4px solid {PURPLE};'>
             <span class='hip-tag' style='background:rgba(168,85,247,0.15); color:{PURPLE};'>Belum terverifikasi</span>
-            <div class='hip-title' style='color:{PURPLE};'>A — Hipotesis Vendor</div>
-            &bull; Gelombang EM diasumsikan menunggangi brine hingga ke ESP, amplitudo relatif konstan.<br>
-            &bull; Ion di seluruh penampang fluida ikut bergetar sepanjang jalur.<br>
-            &bull; Di dekat ESP, kristal scale diklaim berubah jadi partikel halus (aragonit) yang melayang, tidak menempel di impeller.<br>
+            <div class='hip-title' style='color:{PURPLE};'>A — Hipotesis Vendor (Propagasi lewat Brine)</div>
+            &bull; Gelombang ungu berada di <b>tengah fluida</b> (bukan di dinding tubing) &mdash; energi diasumsikan merambat lewat brine.<br>
+            &bull; Amplitudo gelombang <b>tetap relatif konstan</b> dari permukaan hingga ESP, tidak mengecil seperti Skenario B.<br>
+            &bull; Gelombang bergerak kontinu dari atas ke bawah sampai mencapai ESP.<br>
+            &bull; Ion (Ca&sup2;&#8314;, Ba&sup2;&#8314;, Sr&sup2;&#8314;, HCO&#8323;&#8315;, SO&#8324;&sup2;&#8315;) di sepanjang jalur gelombang bergetar/berubah arah &mdash; ilustrasi medan memengaruhi proses nukleasi.<br>
+            &bull; Di dekat ESP, kristal scale digambarkan berubah jadi partikel halus (aragonit) yang tetap melayang, sehingga tidak menempel di impeller.<br>
             &bull; <b>Cek angka:</b> perlu konduktivitas brine &le; {sigma_required:.2e} S/m agar realistis &mdash; jutaan kali lebih rendah dari brine manapun. Klaim ini <b>tidak konsisten</b> dengan fisika skin effect.
         </div>
         """,
@@ -716,12 +735,13 @@ with c1:
 with c2:
     st.markdown(
         f"""
-        <div class='hip-card' style='border-top:4px solid {BLUE};'>
-            <span class='hip-tag' style='background:rgba(59,130,246,0.15); color:{BLUE};'>Sesuai teori EM standar</span>
-            <div class='hip-title' style='color:{BLUE};'>B — Atenuasi oleh Brine</div>
-            &bull; Gelombang EM tetap dianggap merambat lewat fluida, tapi amplitudonya meluruh sesuai skin depth.<br>
-            &bull; Ion hanya bergetar di dekat wellhead (area masih terjangkau medan); makin dalam, gerakannya kembali normal.<br>
-            &bull; Di sekitar ESP tidak ada interaksi langsung yang berarti &mdash; efek diperkirakan sangat kecil, <b>bukan berarti pasti tidak ada</b>.<br>
+        <div class='hip-card' style='border-top:4px solid {VIOLET};'>
+            <span class='hip-tag' style='background:rgba(192,132,252,0.15); color:{VIOLET};'>Sesuai teori EM standar</span>
+            <div class='hip-title' style='color:{VIOLET};'>B — Atenuasi oleh Brine</div>
+            &bull; Gelombang ungu juga di <b>tengah fluida</b> &mdash; mekanisme sama seperti A, tapi energi diserap (attenuation) oleh brine yang bersifat konduktif.<br>
+            &bull; Tepat di bawah EMSP amplitudo masih besar, lalu makin <b>tipis, transparan, dan akhirnya menghilang</b> sebelum mencapai ESP.<br>
+            &bull; Ion hanya bergetar di <b>bagian atas tubing</b> (masih dalam jangkauan medan); makin dalam, gerakan ion makin berkurang lalu kembali normal mengikuti aliran.<br>
+            &bull; Di sekitar ESP <b>tidak ditampilkan interaksi langsung</b> antara gelombang dan partikel scale, karena medan diperkirakan sudah melemah signifikan &mdash; partikel scale tetap tampak normal (bukan bukti pasti ESP tidak terlindungi, hanya efek langsung diperkirakan sangat kecil).<br>
             &bull; <b>Cek angka:</b> sinyal di ESP saat ini {fmt_frac_pct(final_B)}. Ini penjelasan yang paling konsisten dengan hukum fisika standar, tapi <b>gagal menjelaskan sendiri</b> kenaikan run life yang drastis.
         </div>
         """,
@@ -731,13 +751,15 @@ with c2:
 with c3:
     st.markdown(
         f"""
-        <div class='hip-card' style='border-top:4px solid {GREEN};'>
-            <span class='hip-tag' style='background:rgba(16,185,129,0.15); color:{GREEN};'>Bergantung desain alat</span>
-            <div class='hip-title' style='color:{GREEN};'>C — Konduksi Logam (Bonding)</div>
-            &bull; Tidak ada gelombang di tengah fluida &mdash; energi dihantarkan lewat dinding logam tubing/casing (dua jalur di kiri-kanan).<br>
-            &bull; Medan EM di sekitar logam bisa memengaruhi ion yang dekat dinding; ion di tengah fluida tetap tenang.<br>
-            &bull; Kalau memang bonded, jalur ini secara teori bisa mencapai ESP dengan redaman jauh lebih kecil dibanding lewat fluida.<br>
-            &bull; <b>Syarat mutlak:</b> alat harus electrically bonded (kontak listrik langsung), bukan cuma clamp induktif. Status saat ini: <b>{'BONDED (diasumsikan)' if bonded else 'TIDAK bonded → mekanisme ini runtuh jadi sama dengan B'}</b>.
+        <div class='hip-card' style='border-top:4px solid {BLUE};'>
+            <span class='hip-tag' style='background:rgba(59,130,246,0.15); color:{BLUE};'>Bergantung desain alat</span>
+            <div class='hip-title' style='color:{BLUE};'>C — Konduksi Logam (Electrical Bonding)</div>
+            &bull; <b>Tidak ada gelombang</b> di tengah fluida &mdash; pada hipotesis ini energi tidak diasumsikan merambat lewat brine.<br>
+            &bull; Sebagai gantinya, dua garis biru putus-putus menempel di dinding kiri &amp; kanan tubing/casing, bergerak kontinu dari permukaan menuju ESP &mdash; menggambarkan jalur konduksi lewat logam. Dinding tubing sedikit <b>glow</b> mengikuti pergerakan garis.<br>
+            &bull; Sesekali muncul panah kecil dari dinding menuju fluida: medan di sekitar logam dapat berinteraksi dengan ion yang berada <b>dekat dinding</b>.<br>
+            &bull; Ion dekat dinding sedikit bergetar/berubah arah; ion di <b>tengah fluida tetap tenang</b> mengikuti aliran &mdash; efek terlokalisasi di dinding, bukan memenuhi seluruh penampang seperti Skenario A.<br>
+            &bull; Garis biru tetap mencapai ESP, sehingga ion/kristal di sekitar impeller masih bisa divisualisasikan berubah orientasi &mdash; namun ini sepenuhnya <b>hipotesis yang bergantung</b> pada apakah alat electrically bonded ke tubing/casing (kontak listrik langsung), bukan cuma clamp non-invasif.<br>
+            &bull; <b>Syarat mutlak & status saat ini:</b> {'BONDED (diasumsikan)' if bonded else 'TIDAK bonded → mekanisme ini runtuh jadi sama dengan B'}. Redaman perlu &le; {atten_required:.2f} dB/km agar realistis; slidermu {atten_db_km:.1f} dB/km.
         </div>
         """,
         unsafe_allow_html=True,
@@ -757,9 +779,9 @@ fig = go.Figure()
 fig.add_trace(go.Scatter(x=depths, y=curve_A_full, mode="lines", name="A: Klaim vendor",
                           line=dict(color=PURPLE, width=2.5, dash="dash")))
 fig.add_trace(go.Scatter(x=depths, y=curve_B_full, mode="lines", name="B: Atenuasi brine",
-                          line=dict(color=BLUE, width=3)))
+                          line=dict(color=VIOLET, width=3)))
 fig.add_trace(go.Scatter(x=depths, y=curve_C_full, mode="lines", name="C: Konduksi logam",
-                          line=dict(color=GREEN, width=3)))
+                          line=dict(color=BLUE, width=3)))
 fig.add_hline(y=threshold_pct, line_dash="dot", line_color=ORANGE,
               annotation_text=f"Ambang efektivitas ({threshold_pct:.1f}%)", annotation_font_color=ORANGE)
 fig.add_vline(x=well_depth, line_dash="dot", line_color=MUTED,
