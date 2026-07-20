@@ -449,8 +449,13 @@ function buildWell(canvasId, badgeId, sc) {
   }
 
   function drawWaveCenter() {
-    // gelombang zigzag ungu di tengah, amplitudo & alpha ikut kurva intensitas
+    // gelombang zigzag ungu di tengah, dengan glow supaya lebih hidup (mirip referensi)
+    ctx.save();
+    ctx.shadowColor = sc.color;
+    ctx.shadowBlur = 9;
     ctx.lineWidth = 3.4;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.beginPath();
     let started = false;
     for (let y = y0; y <= y1; y += 3) {
@@ -464,38 +469,52 @@ function buildWell(canvasId, badgeId, sc) {
     ctx.strokeStyle = sc.color;
     ctx.globalAlpha = 0.95;
     ctx.stroke();
+    ctx.restore();
     ctx.globalAlpha = 1;
 
-    // titik-titik pulsa kecil & jarang, sekadar penanda arah rambat -
-    // TIDAK boleh menutupi garis ungu di bawahnya
+    // gelembung putih kecil mengiringi gelombang turun (mirip trail bubbles referensi)
     pulses.forEach((p) => {
       const inten = intensityFromCurve(sc.curve, p.t);
       if (inten > 0.01) {
         const y = y0 + p.t * (y1 - y0);
         const amp = (tubeW * 0.30) * Math.pow(inten, 0.35);
-        const x = cx + Math.sin(y * 0.09 - frame * 0.10) * amp;
-        ctx.beginPath(); ctx.arc(x, y, 2.1, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.8, inten * 0.85 + 0.05)})`;
+        const x = cx + Math.sin(y * 0.09 - frame * 0.10) * amp + (Math.sin(p.t * 40 + frame * 0.05) * 4);
+        ctx.beginPath(); ctx.arc(x, y, 1.7, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.85, inten * 0.9 + 0.08)})`;
         ctx.fill();
       }
     });
   }
 
   function drawWallConduction() {
-    const xL = cx - tubeW / 2 + 4, xR = cx + tubeW / 2 - 4;
-    for (let y = y0; y <= y1; y += 6) {
-      const t = (y - y0) / (y1 - y0);
-      const inten = intensityFromCurve(sc.curve, t);
-      if (inten < 0.01) continue;
-      ctx.globalAlpha = Math.min(1, 0.25 + inten * 0.9);
+    const wallAmp = 6.5;
+    const baseL = cx - tubeW / 2 + 9;
+    const baseR = cx + tubeW / 2 - 9;
+
+    ctx.save();
+    ctx.shadowColor = sc.color;
+    ctx.shadowBlur = 7;
+    ctx.lineWidth = 2.6;
+    ctx.lineCap = 'round';
+    ctx.setLineDash([7, 6]);
+    ctx.lineDashOffset = -frame * 0.7;
+
+    [baseL, baseR].forEach((baseX) => {
+      ctx.beginPath();
+      let started = false;
+      for (let y = y0; y <= y1; y += 3) {
+        const t = (y - y0) / (y1 - y0);
+        const inten = intensityFromCurve(sc.curve, t);
+        if (inten < 0.006) { started = false; continue; }
+        const amp = wallAmp * Math.pow(inten, 0.3);
+        const x = baseX + Math.sin(y * 0.14 - frame * 0.16) * amp;
+        if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      }
       ctx.strokeStyle = sc.color;
-      ctx.lineWidth = 2.4;
-      ctx.setLineDash([5, 5]);
-      ctx.lineDashOffset = -frame * 0.6;
-      [xL, xR].forEach((xx) => {
-        ctx.beginPath(); ctx.moveTo(xx, y); ctx.lineTo(xx, Math.min(y + 6, y1)); ctx.stroke();
-      });
-    }
+      ctx.globalAlpha = 0.9;
+      ctx.stroke();
+    });
+    ctx.restore();
     ctx.setLineDash([]); ctx.globalAlpha = 1;
 
     // panah kecil dari dinding ke fluida
@@ -602,7 +621,7 @@ function buildWell(canvasId, badgeId, sc) {
   }
 
   function update() {
-    if (isWave && frame % 14 === 0) spawnPulse();
+    if (isWave && frame % 9 === 0) spawnPulse();
     pulses.forEach((p) => { p.t += p.speed; });
     for (let i = pulses.length - 1; i >= 0; i--) if (pulses[i].t >= 1) pulses.splice(i, 1);
 
