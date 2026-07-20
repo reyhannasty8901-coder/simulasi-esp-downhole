@@ -449,38 +449,45 @@ function buildWell(canvasId, badgeId, sc) {
   }
 
   function drawWaveCenter() {
-    // gelombang zigzag ungu di tengah, dengan glow supaya lebih hidup (mirip referensi)
-    ctx.save();
-    ctx.shadowColor = sc.color;
-    ctx.shadowBlur = 9;
-    ctx.lineWidth = 3.4;
+    // gelombang ungu di tengah — amplitudo & opacity SAMA-SAMA menyusut
+    // mengikuti kurva intensitas, sehingga terlihat memudar halus ke
+    // gelap (bukan berhenti mendadak) saat mendekati batas jangkauannya.
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    ctx.beginPath();
-    let started = false;
+    let prevX = null, prevY = null;
     for (let y = y0; y <= y1; y += 3) {
       const t = (y - y0) / (y1 - y0);
       const inten = intensityFromCurve(sc.curve, t);
-      if (inten < 0.006) { started = false; continue; }
-      const amp = (tubeW * 0.30) * Math.pow(inten, 0.35);
+      if (inten < 0.0012) { prevX = null; continue; }
+      const amp = (tubeW * 0.30) * Math.pow(inten, 0.62);
       const x = cx + Math.sin(y * 0.09 - frame * 0.10) * amp;
-      if (!started) { ctx.moveTo(x, y); started = true; } else { ctx.lineTo(x, y); }
+      const alpha = Math.min(0.95, Math.pow(inten, 0.45) * 1.05);
+      if (prevX !== null) {
+        ctx.save();
+        ctx.shadowColor = sc.color;
+        ctx.shadowBlur = 9 * alpha;
+        ctx.lineWidth = 3.4;
+        ctx.strokeStyle = sc.color;
+        ctx.globalAlpha = alpha;
+        ctx.beginPath();
+        ctx.moveTo(prevX, prevY);
+        ctx.lineTo(x, y);
+        ctx.stroke();
+        ctx.restore();
+      }
+      prevX = x; prevY = y;
     }
-    ctx.strokeStyle = sc.color;
-    ctx.globalAlpha = 0.95;
-    ctx.stroke();
-    ctx.restore();
     ctx.globalAlpha = 1;
 
-    // gelembung putih kecil mengiringi gelombang turun (mirip trail bubbles referensi)
+    // gelembung putih kecil mengiringi gelombang turun, ikut memudar
     pulses.forEach((p) => {
       const inten = intensityFromCurve(sc.curve, p.t);
-      if (inten > 0.01) {
+      if (inten > 0.004) {
         const y = y0 + p.t * (y1 - y0);
-        const amp = (tubeW * 0.30) * Math.pow(inten, 0.35);
+        const amp = (tubeW * 0.30) * Math.pow(inten, 0.62);
         const x = cx + Math.sin(y * 0.09 - frame * 0.10) * amp + (Math.sin(p.t * 40 + frame * 0.05) * 4);
         ctx.beginPath(); ctx.arc(x, y, 1.7, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.85, inten * 0.9 + 0.08)})`;
+        ctx.fillStyle = `rgba(255,255,255,${Math.min(0.85, Math.pow(inten, 0.45) * 0.85)})`;
         ctx.fill();
       }
     });
